@@ -1,0 +1,7 @@
+[package]
+name = "itgo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+multiptr = "0.1.0"
