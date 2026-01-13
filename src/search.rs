@@ -1,8 +1,8 @@
-use std::{cmp::Ordering, panic::panic_any, sync::atomic};
+use std::{cmp::Ordering, panic::panic_any};
 
 use multiptr::MultiMut;
 
-use crate::state::{Frame, Global, MakeResult, Thread, make};
+use crate::state::{Frame, Global, MakeResult, Thread, apply, make};
 
 pub const MAX_VALUE: i32 = 0x1000;
 
@@ -10,8 +10,11 @@ pub struct ExitSearch;
 
 pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
     if thread.tick_countdown() {
-        panic_any(ExitSearch);
-        thread.reset_countdown(global.node.fixed);
+        if thread.nodes == global.node.fixed || global.started_at.elapsed().as_millis() as u64 >= global.ms.fixed {
+            panic_any(ExitSearch);
+        }
+        assert!(thread.nodes < global.node.fixed);
+        thread.reset_countdown((global.node.fixed - thread.nodes).try_into().unwrap_or(!0));
     }
     thread.nodes += 1;
     let [p, c] = f.as_array(-1);
@@ -22,14 +25,12 @@ pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut 
     while open != 0 {
         let mv = open.trailing_zeros() as u8;
         match make(f, mv) {
-            MakeResult::Ok { migo, yugo, score } => {
+            MakeResult::Ok(new) => {
                 f = f.offset(1);
                 let value = -if depth == 0 {
-                    score
+                    new.score
                 } else {
-                    f.opp_migo = migo;
-                    f.opp_yugo = yugo;
-                    f.score = score;
+                    apply(f, new);
                     search(global, thread, f, depth).0
                 };
                 if value > node_value {

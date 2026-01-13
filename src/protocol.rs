@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    borrow::Cow,
+    fmt::{self, Display, Formatter},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,20 +11,26 @@ pub enum EngineMsg {
     Ready(u32),
     Info { pv: Vec<Mv>, eval: i32, depth: u32, nodes: u64, time: u64 },
     Best(Mv),
-    Error(String),
+    Error(Cow<'static, str>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum UserMsg {
     New,
     Sync(u32),
-    State { undo: u32, play: Vec<Mv> },
+    State { undo: usize, play: Vec<Mv> },
     Go { node: Limits, time: Limits },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Mv(u8);
+
+impl Mv {
+    pub fn raw(self) -> u8 {
+        self.0
+    }
+}
 
 impl TryFrom<&str> for Mv {
     type Error = ParseMvError;
@@ -65,4 +74,8 @@ pub struct Limits {
 
 pub fn send(msg: &EngineMsg) {
     println!("{}", ron::to_string(msg).unwrap());
+}
+
+pub fn send_error(error: impl Into<Cow<'static, str>>) {
+    send(&EngineMsg::Error(error.into()));
 }

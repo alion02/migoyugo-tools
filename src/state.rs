@@ -36,6 +36,27 @@ pub struct Frame {
     pub ply: i32,
 }
 
+pub enum MakeResult {
+    Ok(MakeData),
+    Illegal,
+    Igo,
+}
+
+impl MakeResult {
+    pub fn ok(self) -> Option<MakeData> {
+        match self {
+            MakeResult::Ok(data) => Some(data),
+            MakeResult::Illegal | MakeResult::Igo => None,
+        }
+    }
+}
+
+pub struct MakeData {
+    pub migo: u64,
+    pub yugo: u64,
+    pub score: i32,
+}
+
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 7, 8]);
     let [p, c] = f.as_array(-1);
@@ -69,11 +90,11 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
         score += unsafe { _mm256_movemask_pd(transmute(masks)) }.count_ones() as i32;
     }
     score *= -1;
-    MakeResult::Ok { migo, yugo, score }
+    MakeResult::Ok(MakeData { migo, yugo, score })
 }
 
-pub enum MakeResult {
-    Ok { migo: u64, yugo: u64, score: i32 },
-    Illegal,
-    Igo,
+pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
+    f.opp_migo = make.migo;
+    f.opp_yugo = make.yugo;
+    f.score = make.score;
 }
