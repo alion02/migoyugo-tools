@@ -11,7 +11,7 @@ pub struct Frame {
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 7, 8]);
-    let [ref p, ref c] = *f.as_array(-1);
+    let [p, c] = f.as_array(-1);
     let bit = 1 << mv;
     let mut migo = p.opp_migo | bit;
     let mut yugo = p.opp_yugo;

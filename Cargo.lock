@@ -11,6 +11,6 @@ dependencies = [
 
 [[package]]
 name = "multiptr"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94005a7eb7498e9c6e8583a66c6747f5e7aaea3ec6e753a2270eca3d9c173208"
+checksum = "3b10b57d0f682380589a4159d5c8c5bd4a9817a4ba3c26ff50cd0243f7741916"
