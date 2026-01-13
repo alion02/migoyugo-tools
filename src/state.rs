@@ -6,11 +6,12 @@ pub struct Frame {
     pub opp_migo: u64,
     pub opp_yugo: u64,
     pub score: i32,
+    pub ply: i32,
 }
 
-pub fn make(stack: MultiMut<Frame>, mv: u8) -> MakeResult {
+pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 7, 8]);
-    let [ref p, ref c] = *stack.as_array(-1);
+    let [ref p, ref c] = *f.as_array(-1);
     let bit = 1 << mv;
     let mut migo = p.opp_migo | bit;
     let mut yugo = p.opp_yugo;
@@ -40,6 +41,7 @@ pub fn make(stack: MultiMut<Frame>, mv: u8) -> MakeResult {
         migo &= !masks.reduce_or();
         score += unsafe { _mm256_movemask_pd(transmute(masks)) }.count_ones() as i32;
     }
+    score *= -1;
     MakeResult::Ok { migo, yugo, score }
 }
 

@@ -3,6 +3,7 @@
     clippy::missing_transmute_annotations, // don't care
 )]
 
+pub mod search;
 pub mod state;
 
 fn main() {
