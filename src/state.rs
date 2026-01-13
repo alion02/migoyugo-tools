@@ -1,6 +1,33 @@
-use std::{arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*};
+use std::{
+    arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*, sync::atomic::AtomicBool, time::Instant,
+};
 
 use multiptr::MultiMut;
+
+use crate::protocol::Limits;
+
+pub struct Global {
+    pub started_at: Instant,
+    pub stop: AtomicBool,
+    pub node: Limits,
+    pub ms: Limits,
+}
+
+pub struct Thread {
+    pub nodes: u64,
+    countdown: u32,
+}
+
+impl Thread {
+    pub fn tick_countdown(&mut self) -> bool {
+        self.countdown -= 1;
+        self.countdown == 0
+    }
+
+    pub fn reset_countdown(&mut self, max: u32) {
+        self.countdown = max.min(8192);
+    }
+}
 
 pub struct Frame {
     pub opp_migo: u64,
