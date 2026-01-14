@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    fmt::{self, Display, Formatter},
-};
+use std::{borrow::Cow, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,14 +14,14 @@ pub enum EngineMsg {
     },
     Ready,
     Info {
-        pv: Vec<Mv>,
+        pv: Vec<Sq>,
         eval: Eval,
         depth: u32,
         nodes: u64,
         time: u64,
         knps: u64,
     },
-    Best(Option<Mv>),
+    Best(Option<Sq>),
     Error(Cow<'static, str>),
 }
 
@@ -33,69 +30,52 @@ pub enum UserMsg {
     Reset,
     Sync,
     Undo(usize),
-    Play(Vec<Mv>),
+    Play(Vec<Sq>),
     Go(Vec<Limit>),
     Stop,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "&str", into = "String")]
-pub struct Mv(u8);
+pub struct Sq(myu_core::Sq);
 
-impl Mv {
-    pub fn new(raw: u8) -> Option<Self> {
-        if raw < 64 { Some(Self(raw)) } else { None }
-    }
-
-    pub fn from_col_row(col: u8, row: u8) -> Option<Self> {
-        if col < 8 && row < 8 { Some(Self(col | row << 3)) } else { None }
-    }
-
-    pub fn raw(self) -> u8 {
-        self.0
-    }
-
-    pub fn col(self) -> u8 {
-        self.0 & 7
-    }
-
-    pub fn row(self) -> u8 {
-        self.0 >> 3
+impl Sq {
+    pub fn from_raw(raw: u8) -> Option<Self> {
+        myu_core::Sq::from_raw(raw).map(Self)
     }
 }
 
-impl TryFrom<&str> for Mv {
-    type Error = ParseMvError;
+impl Deref for Sq {
+    type Target = myu_core::Sq;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<myu_core::Sq> for Sq {
+    fn from(sq: myu_core::Sq) -> Self {
+        Self(sq)
+    }
+}
+
+impl From<Sq> for myu_core::Sq {
+    fn from(value: Sq) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<&str> for Sq {
+    type Error = myu_core::ParseSqError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let [col, row] = *value.as_bytes() else { return Err(ParseMvError::BadLen) };
-        let c @ ..8 = col.wrapping_sub(b'a') else { return Err(ParseMvError::BadCol) };
-        let r @ ..8 = row.wrapping_sub(b'1') else { return Err(ParseMvError::BadRow) };
-        Ok(Self::from_col_row(c, r).unwrap())
+        myu_core::parse_sq(value).map(Self)
     }
 }
 
-impl From<Mv> for String {
-    fn from(value: Mv) -> Self {
-        let col = b'a' + value.col();
-        let row = b'1' + value.row();
-        String::from_iter([col as char, row as char])
-    }
-}
-
-pub enum ParseMvError {
-    BadLen,
-    BadCol,
-    BadRow,
-}
-
-impl Display for ParseMvError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(match self {
-            ParseMvError::BadLen => "square too long or too short",
-            ParseMvError::BadCol => "square column not a-h",
-            ParseMvError::BadRow => "square row not 1-8",
-        })
+impl From<Sq> for String {
+    fn from(value: Sq) -> Self {
+        myu_core::format_sq(value.0)
     }
 }
 

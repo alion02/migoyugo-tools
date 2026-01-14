@@ -36,6 +36,7 @@ dependencies = [
 name = "myu-protocol"
 version = "0.1.0"
 dependencies = [
+ "myu-core",
  "ron",
  "serde",
 ]

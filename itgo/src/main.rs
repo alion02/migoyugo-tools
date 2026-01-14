@@ -13,7 +13,7 @@ use std::{
 };
 
 use multiptr::MultiMut;
-use myu_protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, from_ron, to_ron};
+use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg, from_ron, to_ron};
 
 use crate::{
     search::ExitSearch,
@@ -81,7 +81,7 @@ fn main() {
                 let result = catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth)));
                 match result {
                     Ok((eval, mv)) => {
-                        best = Mv::new(mv);
+                        best = Sq::from_raw(mv);
                         let eval = Eval::Score(eval); // TODO: convert properly
                         let nodes = thread.nodes;
                         let time = global.elapsed();

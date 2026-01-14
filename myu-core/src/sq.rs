@@ -9,7 +9,7 @@ pub struct Sq(u8);
 impl Sq {
     /// Create from raw index (0-63). Returns `None` if out of range.
     #[inline]
-    pub fn new(raw: u8) -> Option<Self> {
+    pub fn from_raw(raw: u8) -> Option<Self> {
         (raw < 64).then_some(Self(raw))
     }
 
@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_sq_out_of_range() {
-        assert!(Sq::new(64).is_none());
+        assert!(Sq::from_raw(64).is_none());
         assert!(Sq::from_col_row(8, 0).is_none());
         assert!(Sq::from_col_row(0, 8).is_none());
     }
