@@ -8,7 +8,7 @@ pub const MAX_VALUE: i32 = 0x1000;
 
 pub struct ExitSearch;
 
-pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
+pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
     if thread.tick_countdown() {
         if thread.nodes == global.node_limits.fixed || global.elapsed() >= global.ms_limits.fixed {
             resume_unwind(Box::new(ExitSearch));
@@ -26,10 +26,10 @@ pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut 
         let mv = open.trailing_zeros() as u8;
         match make(f, mv) {
             MakeResult::Ok(new) => {
-                f = f.offset(1);
                 let value = -if depth == 0 {
                     new.score
                 } else {
+                    let f = f.offset(1);
                     apply(f, new);
                     search(global, thread, f, depth).0
                 };
