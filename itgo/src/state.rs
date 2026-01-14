@@ -4,8 +4,7 @@ use std::{
 };
 
 use multiptr::MultiMut;
-
-use crate::protocol::Limit;
+use myu_protocol::Limit;
 
 pub struct Global {
     pub started_at: Instant,

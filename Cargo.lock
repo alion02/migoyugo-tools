@@ -16,8 +16,7 @@ name = "itgo"
 version = "0.1.0"
 dependencies = [
  "multiptr",
- "ron",
- "serde",
+ "myu-protocol",
 ]
 
 [[package]]
@@ -25,6 +24,14 @@ name = "multiptr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b10b57d0f682380589a4159d5c8c5bd4a9817a4ba3c26ff50cd0243f7741916"
+
+[[package]]
+name = "myu-protocol"
+version = "0.1.0"
+dependencies = [
+ "ron",
+ "serde",
+]
 
 [[package]]
 name = "once_cell"

@@ -5,8 +5,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::Frame;
-
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EngineMsg {
     Id {
@@ -95,13 +93,6 @@ pub enum Eval {
     Decisive(i32),
 }
 
-impl Eval {
-    pub fn from_raw(f: &Frame, raw: i32) -> Self {
-        _ = f; // TODO
-        Eval::Score(raw)
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Limit {
     Depth(u32),
@@ -115,4 +106,8 @@ pub fn send(msg: &EngineMsg) {
 
 pub fn send_error(error: impl Into<Cow<'static, str>>) {
     send(&EngineMsg::Error(error.into()));
+}
+
+pub fn recv(line: &str) -> Result<UserMsg, ron::de::SpannedError> {
+    ron::from_str(line)
 }

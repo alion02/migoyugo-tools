@@ -12,14 +12,13 @@ use std::{
 };
 
 use multiptr::MultiMut;
+use myu_protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, recv, send, send_error};
 
 use crate::{
-    protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, send, send_error},
     search::ExitSearch,
     state::{Frame, Global, MakeResult, Thread, apply, make},
 };
 
-pub mod protocol;
 pub mod search;
 pub mod state;
 
@@ -82,7 +81,7 @@ fn main() {
                 match result {
                     Ok((eval, mv)) => {
                         best = Mv::new(mv);
-                        let eval = Eval::from_raw(&f, eval);
+                        let eval = Eval::Score(eval); // TODO: convert properly
                         let nodes = thread.nodes;
                         let time = global.elapsed();
                         let knps = if time == 0 { nodes } else { nodes / time };
@@ -107,7 +106,7 @@ fn main() {
                 global.stop.store(true, atomic::Ordering::Relaxed);
             }
         };
-        match ron::from_str::<UserMsg>(&msg) {
+        match recv(&msg) {
             Ok(msg) => match msg {
                 UserMsg::Reset => position = Position::default(),
                 UserMsg::Sync => send(&EngineMsg::Ready),

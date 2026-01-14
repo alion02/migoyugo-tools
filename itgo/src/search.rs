@@ -1,11 +1,9 @@
 use std::{cmp::Ordering, panic::resume_unwind, sync::atomic};
 
 use multiptr::MultiMut;
+use myu_protocol::Limit;
 
-use crate::{
-    protocol::Limit,
-    state::{Frame, Global, MakeResult, Thread, apply, make},
-};
+use crate::state::{Frame, Global, MakeResult, Thread, apply, make};
 
 pub const MAX_VALUE: i32 = 0x1000;
 
