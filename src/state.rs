@@ -27,12 +27,12 @@ pub struct Thread {
 
 impl Thread {
     pub fn new(node_limit: u64) -> Self {
-        Self { nodes: 0, node_limit, countdown: Wrapping(0) }
+        Self { nodes: 0, node_limit, countdown: Wrapping(1) }
     }
 
     pub fn tick_countdown(&mut self) -> bool {
         self.countdown -= 1;
-        self.countdown.0 == !0
+        self.countdown.0 == 0
     }
 
     pub fn reset_countdown(&mut self) {

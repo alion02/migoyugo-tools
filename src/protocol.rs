@@ -5,6 +5,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::state::Frame;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EngineMsg {
     Id {
@@ -18,7 +20,7 @@ pub enum EngineMsg {
     Ready,
     Info {
         pv: Vec<Mv>,
-        eval: i32,
+        eval: Eval,
         depth: u32,
         nodes: u64,
         time: u64,
@@ -87,8 +89,22 @@ impl Display for ParseMvError {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Eval {
+    Score(i32),
+    Decisive(i32),
+}
+
+impl Eval {
+    pub fn from_raw(f: &Frame, raw: i32) -> Self {
+        _ = f; // TODO
+        Eval::Score(raw)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Limit {
+    Depth(u32),
     Nodes(u64),
     Ms(u64),
 }

@@ -14,7 +14,7 @@ use std::{
 use multiptr::MultiMut;
 
 use crate::{
-    protocol::{EngineMsg, Limit, Mv, UserMsg, send, send_error},
+    protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, send, send_error},
     search::ExitSearch,
     state::{Frame, Global, MakeResult, Thread, apply, make},
 };
@@ -66,17 +66,23 @@ fn main() {
     spawn(move || {
         for Search { mut position, global } in search_rx {
             let f = position.frame_ptr();
-            let node_limits = global.limits.iter().filter_map(|&limit| match limit {
-                Limit::Nodes(nodes) => Some(nodes),
-                Limit::Ms(_) => None,
-            });
-            let thread = &mut Thread::new(node_limits.min().unwrap_or(!0));
+            let mut node_limit = !0;
+            let mut depth_limit = !0;
+            for &limit in &global.limits {
+                match limit {
+                    Limit::Depth(depth) => depth_limit = depth_limit.min(depth),
+                    Limit::Nodes(nodes) => node_limit = node_limit.min(nodes),
+                    Limit::Ms(_) => {}
+                }
+            }
+            let thread = &mut Thread::new(node_limit);
             let mut best = None;
-            for depth in 1.. {
+            for depth in 1..=depth_limit {
                 let result = catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth)));
                 match result {
                     Ok((eval, mv)) => {
                         best = Mv::new(mv);
+                        let eval = Eval::from_raw(&f, eval);
                         let nodes = thread.nodes;
                         let time = global.elapsed();
                         let knps = if time == 0 { nodes } else { nodes / time };
@@ -132,6 +138,7 @@ fn main() {
                 }
                 UserMsg::Go(limits) => 'b: {
                     if position.unplayable {
+                        send(&EngineMsg::Best(None));
                         send_error("Cannot search this game state");
                         break 'b;
                     }

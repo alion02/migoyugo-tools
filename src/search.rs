@@ -15,6 +15,7 @@ pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut dept
     if thread.tick_countdown() {
         if global.stop.load(atomic::Ordering::Relaxed)
             || global.limits.iter().any(|&limit| match limit {
+                Limit::Depth(_) => false,
                 Limit::Nodes(nodes) => thread.nodes >= nodes,
                 Limit::Ms(ms) => global.elapsed() >= ms,
             })
