@@ -4,6 +4,7 @@
 )]
 
 use std::{
+    borrow::Cow,
     io::stdin,
     panic::{AssertUnwindSafe, catch_unwind, panic_any},
     sync::{Arc, atomic, mpsc::channel},
@@ -12,7 +13,7 @@ use std::{
 };
 
 use multiptr::MultiMut;
-use myu_protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, recv, send, send_error};
+use myu_protocol::{EngineMsg, Eval, Limit, Mv, UserMsg, from_ron, to_ron};
 
 use crate::{
     search::ExitSearch,
@@ -106,7 +107,7 @@ fn main() {
                 global.stop.store(true, atomic::Ordering::Relaxed);
             }
         };
-        match recv(&msg) {
+        match from_ron(&msg) {
             Ok(msg) => match msg {
                 UserMsg::Reset => position = Position::default(),
                 UserMsg::Sync => send(&EngineMsg::Ready),
@@ -154,4 +155,12 @@ fn main() {
         let Ok(next) = line_rx.recv() else { return };
         msg = next;
     }
+}
+
+fn send(msg: &EngineMsg) {
+    println!("{}", to_ron(msg));
+}
+
+fn send_error(error: impl Into<Cow<'static, str>>) {
+    send(&EngineMsg::Error(error.into()));
 }

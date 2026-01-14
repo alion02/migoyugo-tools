@@ -47,8 +47,20 @@ impl Mv {
         if raw < 64 { Some(Self(raw)) } else { None }
     }
 
+    pub fn from_col_row(col: u8, row: u8) -> Option<Self> {
+        if col < 8 && row < 8 { Some(Self(col | row << 3)) } else { None }
+    }
+
     pub fn raw(self) -> u8 {
         self.0
+    }
+
+    pub fn col(self) -> u8 {
+        self.0 & 7
+    }
+
+    pub fn row(self) -> u8 {
+        self.0 >> 3
     }
 }
 
@@ -56,18 +68,18 @@ impl TryFrom<&str> for Mv {
     type Error = ParseMvError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let [c, r] = *value.as_bytes() else { return Err(ParseMvError::BadLen) };
-        let c @ ..8 = c.wrapping_sub(b'a') else { return Err(ParseMvError::BadCol) };
-        let r @ ..8 = r.wrapping_sub(b'1') else { return Err(ParseMvError::BadRow) };
-        Ok(Mv(c | r << 3))
+        let [col, row] = *value.as_bytes() else { return Err(ParseMvError::BadLen) };
+        let c @ ..8 = col.wrapping_sub(b'a') else { return Err(ParseMvError::BadCol) };
+        let r @ ..8 = row.wrapping_sub(b'1') else { return Err(ParseMvError::BadRow) };
+        Ok(Self::from_col_row(c, r).unwrap())
     }
 }
 
 impl From<Mv> for String {
-    fn from(Mv(value): Mv) -> Self {
-        let c = (value & 7) + b'a';
-        let r = (value >> 3) + b'1';
-        String::from_iter([c as char, r as char])
+    fn from(value: Mv) -> Self {
+        let col = b'a' + value.col();
+        let row = b'1' + value.row();
+        String::from_iter([col as char, row as char])
     }
 }
 
@@ -100,14 +112,10 @@ pub enum Limit {
     Ms(u64),
 }
 
-pub fn send(msg: &EngineMsg) {
-    println!("{}", ron::to_string(msg).unwrap());
+pub fn to_ron(msg: &EngineMsg) -> String {
+    ron::to_string(msg).unwrap()
 }
 
-pub fn send_error(error: impl Into<Cow<'static, str>>) {
-    send(&EngineMsg::Error(error.into()));
-}
-
-pub fn recv(line: &str) -> Result<UserMsg, ron::de::SpannedError> {
+pub fn from_ron(line: &str) -> Result<UserMsg, ron::de::SpannedError> {
     ron::from_str(line)
 }
