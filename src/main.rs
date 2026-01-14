@@ -14,9 +14,9 @@ use std::{
 use multiptr::MultiMut;
 
 use crate::{
-    protocol::{EngineMsg, Mv, UserMsg, send, send_error},
+    protocol::{EngineMsg, Limit, Mv, UserMsg, send, send_error},
     search::ExitSearch,
-    state::{Frame, Global, MakeResult, apply, make},
+    state::{Frame, Global, MakeResult, Thread, apply, make},
 };
 
 pub mod protocol;
@@ -66,20 +66,21 @@ fn main() {
     spawn(move || {
         for Search { mut position, global } in search_rx {
             let f = position.frame_ptr();
-            let thread = &mut Default::default();
+            let node_limits = global.limits.iter().filter_map(|&limit| match limit {
+                Limit::Nodes(nodes) => Some(nodes),
+                Limit::Ms(_) => None,
+            });
+            let thread = &mut Thread::new(node_limits.min().unwrap_or(!0));
             let mut best = None;
             for depth in 1.. {
                 let result = catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth)));
                 match result {
                     Ok((eval, mv)) => {
                         best = Mv::new(mv);
-                        send(&EngineMsg::Info {
-                            pv: vec![best.unwrap()],
-                            eval,
-                            depth,
-                            nodes: thread.nodes,
-                            time: global.elapsed(),
-                        });
+                        let nodes = thread.nodes;
+                        let time = global.elapsed();
+                        let knps = if time == 0 { nodes } else { nodes / time };
+                        send(&EngineMsg::Info { pv: vec![best.unwrap()], eval, depth, nodes, time, knps });
                     }
                     Err(e) => {
                         if e.downcast_ref::<ExitSearch>().is_none() {
@@ -104,16 +105,18 @@ fn main() {
             Ok(msg) => match msg {
                 UserMsg::Reset => position = Position::default(),
                 UserMsg::Sync => send(&EngineMsg::Ready),
-                UserMsg::State { undo, play } => 'b: {
-                    let Some(new_index) = position.index.checked_sub(undo).filter(|index| index >= &1) else {
+                UserMsg::Undo(count) => 'b: {
+                    let Some(new_index) = position.index.checked_sub(count).filter(|index| index >= &1) else {
                         send_error("Too many undos");
                         break 'b;
                     };
-                    if undo > 0 {
+                    if count > 0 {
                         position.unplayable = false;
                     }
                     position.index = new_index;
-                    for mv in play {
+                }
+                UserMsg::Play(mvs) => 'b: {
+                    for mv in mvs {
                         if position.unplayable {
                             send_error("Cannot play on this game state");
                             break 'b;
@@ -127,17 +130,12 @@ fn main() {
                         }
                     }
                 }
-                UserMsg::Go { node, ms } => 'b: {
+                UserMsg::Go(limits) => 'b: {
                     if position.unplayable {
                         send_error("Cannot search this game state");
                         break 'b;
                     }
-                    let new_global = Arc::new(Global {
-                        started_at: Instant::now(),
-                        stop: false.into(),
-                        node_limits: node,
-                        ms_limits: ms,
-                    });
+                    let new_global = Arc::new(Global { started_at: Instant::now(), stop: false.into(), limits });
                     stop();
                     global = Some(new_global.clone());
                     search_tx.send(Search { position: position.clone(), global: new_global }).unwrap();

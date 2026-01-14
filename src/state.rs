@@ -1,16 +1,16 @@
 use std::{
-    arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*, sync::atomic::AtomicBool, time::Instant,
+    arch::x86_64::_mm256_movemask_pd, mem::transmute, num::Wrapping, simd::prelude::*, sync::atomic::AtomicBool,
+    time::Instant,
 };
 
 use multiptr::MultiMut;
 
-use crate::protocol::Limits;
+use crate::protocol::Limit;
 
 pub struct Global {
     pub started_at: Instant,
     pub stop: AtomicBool,
-    pub node_limits: Limits,
-    pub ms_limits: Limits,
+    pub limits: Vec<Limit>,
 }
 
 impl Global {
@@ -21,23 +21,22 @@ impl Global {
 
 pub struct Thread {
     pub nodes: u64,
-    countdown: u32,
+    pub node_limit: u64,
+    countdown: Wrapping<u32>,
 }
 
 impl Thread {
+    pub fn new(node_limit: u64) -> Self {
+        Self { nodes: 0, node_limit, countdown: Wrapping(0) }
+    }
+
     pub fn tick_countdown(&mut self) -> bool {
         self.countdown -= 1;
-        self.countdown == 0
+        self.countdown.0 == !0
     }
 
-    pub fn reset_countdown(&mut self, max: Option<u32>) {
-        self.countdown = max.unwrap_or(!0).min(8192);
-    }
-}
-
-impl Default for Thread {
-    fn default() -> Self {
-        Self { nodes: 0, countdown: 8192 }
+    pub fn reset_countdown(&mut self) {
+        self.countdown.0 = (self.node_limit - self.nodes).min(8192) as u32;
     }
 }
 

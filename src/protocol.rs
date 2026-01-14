@@ -7,9 +7,23 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EngineMsg {
-    Id { name: Option<String>, author: Option<String>, version: Option<String> },
+    Id {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<Cow<'static, str>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        author: Option<Cow<'static, str>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        version: Option<Cow<'static, str>>,
+    },
     Ready,
-    Info { pv: Vec<Mv>, eval: i32, depth: u32, nodes: u64, time: u64 },
+    Info {
+        pv: Vec<Mv>,
+        eval: i32,
+        depth: u32,
+        nodes: u64,
+        time: u64,
+        knps: u64,
+    },
     Best(Option<Mv>),
     Error(Cow<'static, str>),
 }
@@ -18,8 +32,9 @@ pub enum EngineMsg {
 pub enum UserMsg {
     Reset,
     Sync,
-    State { undo: usize, play: Vec<Mv> },
-    Go { node: Limits, ms: Limits },
+    Undo(usize),
+    Play(Vec<Mv>),
+    Go(Vec<Limit>),
     Stop,
 }
 
@@ -72,9 +87,10 @@ impl Display for ParseMvError {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Limits {
-    pub fixed: u64,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Limit {
+    Nodes(u64),
+    Ms(u64),
 }
 
 pub fn send(msg: &EngineMsg) {

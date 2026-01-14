@@ -1,8 +1,11 @@
-use std::{cmp::Ordering, panic::resume_unwind};
+use std::{cmp::Ordering, panic::resume_unwind, sync::atomic};
 
 use multiptr::MultiMut;
 
-use crate::state::{Frame, Global, MakeResult, Thread, apply, make};
+use crate::{
+    protocol::Limit,
+    state::{Frame, Global, MakeResult, Thread, apply, make},
+};
 
 pub const MAX_VALUE: i32 = 0x1000;
 
@@ -10,11 +13,15 @@ pub struct ExitSearch;
 
 pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
     if thread.tick_countdown() {
-        if thread.nodes == global.node_limits.fixed || global.elapsed() >= global.ms_limits.fixed {
+        if global.stop.load(atomic::Ordering::Relaxed)
+            || global.limits.iter().any(|&limit| match limit {
+                Limit::Nodes(nodes) => thread.nodes >= nodes,
+                Limit::Ms(ms) => global.elapsed() >= ms,
+            })
+        {
             resume_unwind(Box::new(ExitSearch));
         }
-        assert!(thread.nodes < global.node_limits.fixed);
-        thread.reset_countdown((global.node_limits.fixed - thread.nodes).try_into().ok());
+        thread.reset_countdown();
     }
     thread.nodes += 1;
     let [p, c] = f.as_array(-1);
