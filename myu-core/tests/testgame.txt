@@ -1,0 +1,20 @@
+1. d4 c3
+2. c4 e4
+3. d5 e3
+4. d3 e6
+5. d6 (1 yugo) e5 (1 yugo)
+6. b4 f6
+7. d4 e3
+8. e7 c5
+9. d7 e6
+10. d5 (1 yugo) d4 (1 yugo)
+11. d7 d8
+12. f6 c3
+13. b2 g4
+14. e4 h3
+15. f5 g3
+16. f3 h2
+17. c6 (1 yugo) f4 (1 yugo)
+18. e4 g3
+19. b7 (1 yugo) e4 (2 yugos)
+20. a8 (1 yugo)
