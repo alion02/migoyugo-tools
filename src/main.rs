@@ -5,7 +5,7 @@
 
 use std::{
     io::stdin,
-    panic::{AssertUnwindSafe, catch_unwind, panic_any, set_hook, take_hook},
+    panic::{AssertUnwindSafe, catch_unwind, panic_any},
     sync::{Arc, atomic, mpsc::channel},
     thread::spawn,
     time::Instant,
@@ -69,9 +69,7 @@ fn main() {
             let thread = &mut Default::default();
             let mut best = None;
             for depth in 1.. {
-                set_hook(Box::new(|_| {}));
                 let result = catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth)));
-                _ = take_hook();
                 match result {
                     Ok((eval, mv)) => {
                         best = Mv::new(mv);

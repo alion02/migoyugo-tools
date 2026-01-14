@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, panic::panic_any};
+use std::{cmp::Ordering, panic::resume_unwind};
 
 use multiptr::MultiMut;
 
@@ -11,7 +11,7 @@ pub struct ExitSearch;
 pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
     if thread.tick_countdown() {
         if thread.nodes == global.node_limits.fixed || global.elapsed() >= global.ms_limits.fixed {
-            panic_any(ExitSearch);
+            resume_unwind(Box::new(ExitSearch));
         }
         assert!(thread.nodes < global.node_limits.fixed);
         thread.reset_countdown((global.node_limits.fixed - thread.nodes).try_into().ok());
