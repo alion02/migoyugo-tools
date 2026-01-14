@@ -134,6 +134,7 @@ fn main() {
                             MakeResult::Illegal => todo!(),
                             MakeResult::Igo => position.unplayable = true,
                         }
+                        position.index += 1;
                     }
                 }
                 UserMsg::Go(limits) => 'b: {
