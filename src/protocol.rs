@@ -8,18 +8,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EngineMsg {
     Id { name: Option<String>, author: Option<String>, version: Option<String> },
-    Ready(u32),
+    Ready,
     Info { pv: Vec<Mv>, eval: i32, depth: u32, nodes: u64, time: u64 },
-    Best(Mv),
+    Best(Option<Mv>),
     Error(Cow<'static, str>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum UserMsg {
-    New,
-    Sync(u32),
+    Reset,
+    Sync,
     State { undo: usize, play: Vec<Mv> },
-    Go { node: Limits, time: Limits },
+    Go { node: Limits, ms: Limits },
+    Stop,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -27,6 +28,10 @@ pub enum UserMsg {
 pub struct Mv(u8);
 
 impl Mv {
+    pub fn new(raw: u8) -> Option<Self> {
+        if raw < 64 { Some(Self(raw)) } else { None }
+    }
+
     pub fn raw(self) -> u8 {
         self.0
     }
@@ -45,8 +50,8 @@ impl TryFrom<&str> for Mv {
 
 impl From<Mv> for String {
     fn from(Mv(value): Mv) -> Self {
-        let c = value & 7;
-        let r = value >> 3;
+        let c = (value & 7) + b'a';
+        let r = (value >> 3) + b'1';
         String::from_iter([c as char, r as char])
     }
 }

@@ -10,11 +10,11 @@ pub struct ExitSearch;
 
 pub fn search(global: &Global, thread: &mut Thread, mut f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
     if thread.tick_countdown() {
-        if thread.nodes == global.node.fixed || global.started_at.elapsed().as_millis() as u64 >= global.ms.fixed {
+        if thread.nodes == global.node_limits.fixed || global.elapsed() >= global.ms_limits.fixed {
             panic_any(ExitSearch);
         }
-        assert!(thread.nodes < global.node.fixed);
-        thread.reset_countdown((global.node.fixed - thread.nodes).try_into().unwrap_or(!0));
+        assert!(thread.nodes < global.node_limits.fixed);
+        thread.reset_countdown((global.node_limits.fixed - thread.nodes).try_into().ok());
     }
     thread.nodes += 1;
     let [p, c] = f.as_array(-1);

@@ -9,8 +9,14 @@ use crate::protocol::Limits;
 pub struct Global {
     pub started_at: Instant,
     pub stop: AtomicBool,
-    pub node: Limits,
-    pub ms: Limits,
+    pub node_limits: Limits,
+    pub ms_limits: Limits,
+}
+
+impl Global {
+    pub fn elapsed(&self) -> u64 {
+        self.started_at.elapsed().as_millis() as u64
+    }
 }
 
 pub struct Thread {
@@ -24,11 +30,18 @@ impl Thread {
         self.countdown == 0
     }
 
-    pub fn reset_countdown(&mut self, max: u32) {
-        self.countdown = max.min(8192);
+    pub fn reset_countdown(&mut self, max: Option<u32>) {
+        self.countdown = max.unwrap_or(!0).min(8192);
     }
 }
 
+impl Default for Thread {
+    fn default() -> Self {
+        Self { nodes: 0, countdown: 8192 }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Frame {
     pub opp_migo: u64,
     pub opp_yugo: u64,
@@ -40,15 +53,6 @@ pub enum MakeResult {
     Ok(MakeData),
     Illegal,
     Igo,
-}
-
-impl MakeResult {
-    pub fn ok(self) -> Option<MakeData> {
-        match self {
-            MakeResult::Ok(data) => Some(data),
-            MakeResult::Illegal | MakeResult::Igo => None,
-        }
-    }
 }
 
 pub struct MakeData {
