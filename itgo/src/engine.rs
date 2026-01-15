@@ -2,7 +2,7 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind, panic_any},
     sync::{
         Arc,
-        mpsc::{Sender, channel},
+        mpsc::{SyncSender, sync_channel},
     },
     thread::spawn,
 };
@@ -44,8 +44,8 @@ pub struct Search {
     pub global: Arc<Global>,
 }
 
-pub fn start() -> Sender<Search> {
-    let (tx, rx) = channel();
+pub fn start() -> SyncSender<Search> {
+    let (tx, rx) = sync_channel(0);
     spawn(move || {
         for Search { mut position, global } in rx {
             let f = position.frame_ptr();
