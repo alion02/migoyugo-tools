@@ -40,7 +40,9 @@ pub fn search(
         match make(f, mv) {
             MakeResult::Ok(new) => {
                 let value = -if depth == 0 {
-                    new.score * 64 + (c.opp_migo.count_ones() as i32 - new.migo.count_ones() as i32)
+                    (c.opp_migo.count_ones() as i32 - new.migo.count_ones() as i32)
+                        + (c.opp_yugo.count_ones() as i32 - new.yugo.count_ones() as i32) * 64
+                        + new.score * 16
                 } else {
                     let f = f.offset(1);
                     apply(f, new);
