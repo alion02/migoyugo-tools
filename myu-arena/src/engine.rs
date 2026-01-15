@@ -215,12 +215,6 @@ impl Engine {
         }
     }
 
-    /// Send Reset command
-    #[allow(dead_code)]
-    pub fn reset(&mut self) -> Result<(), String> {
-        self.send_message(&UserMsg::Reset)
-    }
-
     /// Send Sync command and wait for Ready
     pub fn sync(&mut self) -> Result<(), String> {
         self.send_message(&UserMsg::Sync)?;
@@ -245,6 +239,9 @@ impl Engine {
     }
 
     /// Send Go command and wait for Best response
+    ///
+    /// `time_limit_ms` is the time limit given to the engine for its search.
+    /// The function will wait up to `self.timeout_ms` (which includes leniency) for a response.
     pub fn go(&mut self, time_limit_ms: u64) -> MoveResult {
         if let Err(_e) = self.send_message(&UserMsg::Go(vec![Limit::Ms(time_limit_ms)])) {
             self.write_log("crash");
@@ -261,7 +258,7 @@ impl Engine {
                 return MoveResult::Timeout;
             }
 
-            match self.recv_message_timeout(remaining.min(Duration::from_millis(100))) {
+            match self.recv_message_timeout(remaining) {
                 Ok(Some(msg)) => match msg {
                     EngineMsg::Best(Some(sq)) => return MoveResult::Move(sq),
                     EngineMsg::Best(None) => return MoveResult::NoMove,
@@ -282,12 +279,6 @@ impl Engine {
                 }
             }
         }
-    }
-
-    /// Check if the engine process is still running
-    #[allow(dead_code)]
-    pub fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
     }
 
     /// Kill the engine process
