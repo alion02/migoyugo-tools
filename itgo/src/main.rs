@@ -13,7 +13,7 @@ use std::{
 };
 
 use multiptr::MultiMut;
-use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg, from_ron, to_ron};
+use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg, deserialize, serialize};
 
 use crate::{
     search::ExitSearch,
@@ -107,7 +107,7 @@ fn main() {
                 global.stop.store(true, atomic::Ordering::Relaxed);
             }
         };
-        match from_ron(&msg) {
+        match deserialize(&msg) {
             Ok(msg) => match msg {
                 UserMsg::Reset => position = Position::default(),
                 UserMsg::Sync => send(&EngineMsg::Ready),
@@ -158,7 +158,7 @@ fn main() {
 }
 
 fn send(msg: &EngineMsg) {
-    println!("{}", to_ron(msg));
+    println!("{}", serialize(msg).unwrap());
 }
 
 fn send_error(error: impl Into<Cow<'static, str>>) {

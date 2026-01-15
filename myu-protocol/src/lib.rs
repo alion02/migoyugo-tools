@@ -1,5 +1,6 @@
 use std::{borrow::Cow, ops::Deref};
 
+pub use ron::{from_str as deserialize, to_string as serialize};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,12 +91,4 @@ pub enum Limit {
     Depth(u32),
     Nodes(u64),
     Ms(u64),
-}
-
-pub fn to_ron(msg: &EngineMsg) -> String {
-    ron::to_string(msg).unwrap()
-}
-
-pub fn from_ron(line: &str) -> Result<UserMsg, ron::de::SpannedError> {
-    ron::from_str(line)
 }
