@@ -51,10 +51,11 @@ impl MatchStats {
 
         for result in [&pair.game1, &pair.game2] {
             // Record win/loss/draw
-            match result.dev_score as u8 {
-                0 => self.dev_losses += 1,
-                1 => self.dev_wins += 1,
-                _ => self.draws += 1,
+            match result.dev_score {
+                0.0 => self.dev_losses += 1,
+                0.5 => self.draws += 1,
+                1.0 => self.dev_wins += 1,
+                _ => unreachable!(),
             }
 
             // Record errors
