@@ -9,7 +9,14 @@ pub const MAX_VALUE: i32 = 0x7FFF;
 
 pub struct ExitSearch;
 
-pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut depth: u32) -> (i32, u8) {
+pub fn search(
+    global: &Global,
+    thread: &mut Thread,
+    f: MultiMut<Frame>,
+    mut depth: u32,
+    mut alpha: i32,
+    beta: i32,
+) -> (i32, u8) {
     if thread.tick_countdown() {
         if global.stop.load(atomic::Ordering::Relaxed)
             || global.limits.iter().any(|&limit| match limit {
@@ -37,11 +44,17 @@ pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut dept
                 } else {
                     let f = f.offset(1);
                     apply(f, new);
-                    search(global, thread, f, depth).0
+                    search(global, thread, f, depth, -beta, -alpha).0
                 };
                 if value > node_value {
                     node_value = value;
                     node_mv = mv;
+                    if value > alpha {
+                        alpha = value;
+                        if alpha >= beta {
+                            break;
+                        }
+                    }
                 }
             }
             MakeResult::Illegal => (),

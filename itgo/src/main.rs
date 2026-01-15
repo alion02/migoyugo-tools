@@ -78,7 +78,8 @@ fn main() {
             let thread = &mut Thread::new(node_limit);
             let mut best = None;
             for depth in 1..=depth_limit {
-                let result = catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth)));
+                let result =
+                    catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth, -i32::MAX, i32::MAX)));
                 match result {
                     Ok((eval, mv)) => {
                         best = Sq::from_raw(mv);
