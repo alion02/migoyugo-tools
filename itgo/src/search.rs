@@ -30,10 +30,9 @@ pub fn search(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    let [p, c] = f.as_array(-1);
-    let open = !(p.opp_migo | p.opp_yugo | c.opp_migo | c.opp_yugo);
-    let killer_0 = 1 << c.killers[0];
-    let killer_1 = 1 << c.killers[1];
+    let open = !(f[-1].opp_migo | f[-1].opp_yugo | f.opp_migo | f.opp_yugo);
+    let killer_0 = 1 << f.killers[0];
+    let killer_1 = 1 << f.killers[1];
     let mut node_value = -i32::MAX;
     let mut node_mv = !0;
     depth -= 1;
@@ -43,9 +42,9 @@ pub fn search(
             match make(f, mv) {
                 MakeResult::Ok(new) => {
                     let value = -if depth == 0 {
-                        let my_migos = c.opp_migo.count_ones() as i32;
-                        let my_yugos = c.opp_yugo.count_ones() as i32;
-                        let my_simd_pieces = Simd::splat(c.opp_migo | c.opp_yugo);
+                        let my_migos = f.opp_migo.count_ones() as i32;
+                        let my_yugos = f.opp_yugo.count_ones() as i32;
+                        let my_simd_pieces = Simd::splat(f.opp_migo | f.opp_yugo);
                         let my_coherence_masks_near = my_simd_pieces & my_simd_pieces >> DIRECTIONS & SHR_MASK[1];
                         let my_coherence_masks_far =
                             my_simd_pieces & my_simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
@@ -89,17 +88,17 @@ pub fn search(
                     }
                 }
                 MakeResult::Illegal => (),
-                MakeResult::Igo => return (MAX_VALUE - (c.ply + 1), mv), // terminal state is technically the *next* ply
+                MakeResult::Igo => return (MAX_VALUE - (f.ply + 1), mv), // terminal state is technically the *next* ply
             }
             open &= open - 1;
         }
     }
     if node_mv == !0 {
         // Wego: no legal moves
-        node_value = match c.score.cmp(&0) {
-            Ordering::Greater => MAX_VALUE - c.ply,
+        node_value = match f.score.cmp(&0) {
+            Ordering::Greater => MAX_VALUE - f.ply,
             Ordering::Equal => 0,
-            Ordering::Less => c.ply - MAX_VALUE,
+            Ordering::Less => f.ply - MAX_VALUE,
         };
     }
     (node_value, node_mv)
