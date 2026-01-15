@@ -61,7 +61,7 @@ pub struct Frame {
     pub opp_yugo: u64,
     pub score: i32,
     pub ply: i32,
-    pub killer: u8,
+    pub killers: [u8; 2],
 }
 
 pub enum MakeResult {

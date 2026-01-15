@@ -32,10 +32,12 @@ pub fn search(
     thread.nodes += 1;
     let [p, c] = f.as_array(-1);
     let open = !(p.opp_migo | p.opp_yugo | c.opp_migo | c.opp_yugo);
+    let killer_0 = 1 << c.killers[0];
+    let killer_1 = 1 << c.killers[1];
     let mut node_value = -i32::MAX;
     let mut node_mv = !0;
     depth -= 1;
-    'moves: for mut open in [open & 1 << c.killer, open & !(1 << c.killer)] {
+    'moves: for mut open in [open & killer_0, open & killer_1, open & !killer_0 & !killer_1] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
             match make(f, mv) {
@@ -74,7 +76,13 @@ pub fn search(
                         if value > alpha {
                             alpha = value;
                             if alpha >= beta {
-                                f.killer = mv;
+                                if f.killers[0] != mv {
+                                    if f.killers[1] != mv {
+                                        f.killers[1] = mv;
+                                    } else {
+                                        f.killers = [mv, f.killers[0]];
+                                    }
+                                }
                                 break 'moves;
                             }
                         }
