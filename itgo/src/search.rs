@@ -5,7 +5,7 @@ use myu_protocol::Limit;
 
 use crate::state::{Frame, Global, MakeResult, Thread, apply, make};
 
-pub const MAX_VALUE: i32 = 0x1000;
+pub const MAX_VALUE: i32 = 0x7FFF;
 
 pub struct ExitSearch;
 
@@ -33,7 +33,7 @@ pub fn search(global: &Global, thread: &mut Thread, f: MultiMut<Frame>, mut dept
         match make(f, mv) {
             MakeResult::Ok(new) => {
                 let value = -if depth == 0 {
-                    new.score
+                    new.score * 64 + (c.opp_migo.count_ones() as i32 - new.migo.count_ones() as i32)
                 } else {
                     let f = f.offset(1);
                     apply(f, new);
