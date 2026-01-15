@@ -42,28 +42,32 @@ pub fn search(
             match make(f, mv) {
                 MakeResult::Ok(new) => {
                     let value = -if depth == 0 {
-                        let my_migos = f.opp_migo.count_ones() as i32;
-                        let my_yugos = f.opp_yugo.count_ones() as i32;
-                        let my_simd_pieces = Simd::splat(f.opp_migo | f.opp_yugo);
-                        let my_coherence_masks_near = my_simd_pieces & my_simd_pieces >> DIRECTIONS & SHR_MASK[1];
-                        let my_coherence_masks_far =
-                            my_simd_pieces & my_simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
-                        let my_coherence = my_coherence_masks_near.count_ones().reduce_sum() as i32
-                            + my_coherence_masks_far.count_ones().reduce_sum() as i32;
+                        struct EvalData {
+                            migos: i32,
+                            yugos: i32,
+                            coherence: i32,
+                        }
 
-                        let opp_migos = new.migo.count_ones() as i32;
-                        let opp_yugos = new.yugo.count_ones() as i32;
-                        let opp_simd_pieces = Simd::splat(new.migo | new.yugo);
-                        let opp_coherence_masks_near = opp_simd_pieces & opp_simd_pieces >> DIRECTIONS & SHR_MASK[1];
-                        let opp_coherence_masks_far =
-                            opp_simd_pieces & opp_simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
-                        let opp_coherence = opp_coherence_masks_near.count_ones().reduce_sum() as i32
-                            + opp_coherence_masks_far.count_ones().reduce_sum() as i32;
+                        #[inline]
+                        fn side_eval(migo: u64, yugo: u64) -> EvalData {
+                            let migos = migo.count_ones() as i32;
+                            let yugos = yugo.count_ones() as i32;
+                            let pieces = migo | yugo;
+                            let simd_pieces = Simd::splat(pieces);
+                            let coherence_masks_near = simd_pieces & simd_pieces >> DIRECTIONS & SHR_MASK[1];
+                            let coherence_masks_far =
+                                simd_pieces & simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
+                            let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
+                                + coherence_masks_far.count_ones().reduce_sum() as i32;
+                            EvalData { migos, yugos, coherence }
+                        }
 
+                        let my = side_eval(f.opp_migo, f.opp_yugo);
+                        let opp = side_eval(new.migo, new.yugo);
                         new.score * 16
-                            + (my_migos - opp_migos)
-                            + (my_yugos - opp_yugos) * 64
-                            + (my_coherence - opp_coherence)
+                            + (my.migos - opp.migos)
+                            + (my.yugos - opp.yugos) * 64
+                            + (my.coherence - opp.coherence)
                     } else {
                         let f = f.offset(1);
                         apply(f, new);
