@@ -85,7 +85,7 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
         masks |= masks << DIRECTIONS;
         masks |= masks << DIRECTIONS << DIRECTIONS;
         yugo |= bit;
-        if Simd::splat(yugo).simd_eq(masks).any() {
+        if ((Simd::splat(yugo) & masks).simd_eq(masks).to_int() & masks.cast()).reduce_or() != 0 {
             // at least one 4 line of yugos
             return MakeResult::Igo;
         }
