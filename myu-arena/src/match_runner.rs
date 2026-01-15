@@ -93,12 +93,13 @@ pub struct GamePairResult {
 }
 
 /// Configuration for running games
-struct GameConfig {
-    dev_path: PathBuf,
-    base_path: PathBuf,
-    time_ms: u64,
-    timeout_leniency: f64,
-    logs_dir: Option<PathBuf>,
+#[derive(Clone)]
+pub struct GameConfig {
+    pub dev_path: PathBuf,
+    pub base_path: PathBuf,
+    pub time_ms: u64,
+    pub timeout_leniency: f64,
+    pub logs_dir: Option<PathBuf>,
 }
 
 /// Match runner that manages concurrent game pairs
@@ -110,6 +111,7 @@ pub struct MatchRunner {
 }
 
 impl MatchRunner {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         dev_path: PathBuf,
         base_path: PathBuf,
@@ -254,8 +256,19 @@ fn play_single_game(
     }
 
     // Main game loop
-    const MAX_MOVES: usize = 500;
+    run_game_loop(game, white, black, config.time_ms, dev_is_white, stop_flag)
+}
 
+const MAX_MOVES: usize = 500;
+
+fn run_game_loop(
+    mut game: Game,
+    mut white: Engine,
+    mut black: Engine,
+    time_ms: u64,
+    dev_is_white: bool,
+    stop_flag: &Arc<AtomicBool>,
+) -> GameResult {
     for _move_count in 0..MAX_MOVES {
         if stop_flag.load(Ordering::SeqCst) {
             return GameResult {
@@ -278,7 +291,7 @@ fn play_single_game(
         let is_white_turn = game.current_state().side_to_move() == Color::White;
         let (current, opponent) = if is_white_turn { (&mut white, &mut black) } else { (&mut black, &mut white) };
 
-        match current.go(config.time_ms) {
+        match current.go(time_ms) {
             MoveResult::Move(sq) => {
                 let core_sq = myu_core::Sq::from_raw(sq.raw()).unwrap();
                 let mv = Mv::new(core_sq);
