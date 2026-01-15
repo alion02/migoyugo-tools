@@ -137,10 +137,6 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn name(&self) -> &str {
-        self.engine_name.as_deref().unwrap_or(&self.name)
-    }
-
     fn wait_for_id(&mut self) -> Result<(), String> {
         // Engines should send Id message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {

@@ -1,13 +1,14 @@
 //! Match runner for paired games with pentanomial scoring.
 
 use std::{
+    fmt,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, Sender},
+        mpsc,
     },
-    thread::{self, JoinHandle},
+    thread,
 };
 
 use myu_core::{Color, Game, Mv, Outcome};
@@ -20,46 +21,61 @@ use crate::{
 
 /// Pentanomial outcome for a game pair
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PentanomialOutcome {
-    LL,   // Both games lost by dev (0 points)
-    LD,   // One loss, one draw (0.5 points)
-    DDWL, // Two draws, or one win one loss (1 point)
-    WD,   // One win, one draw (1.5 points)
-    WW,   // Both games won by dev (2 points)
+pub enum Pentanomial {
+    Ll,   // Both games lost by dev (0 points)
+    Ld,   // One loss, one draw (0.5 points)
+    DdWl, // Two draws, or one win one loss (1 point)
+    Wd,   // One win, one draw (1.5 points)
+    Ww,   // Both games won by dev (2 points)
 }
 
-impl PentanomialOutcome {
-    pub fn from_pair(game1_dev_score: f64, game2_dev_score: f64) -> Self {
-        let total = game1_dev_score + game2_dev_score;
-        if total < 0.25 {
-            PentanomialOutcome::LL
-        } else if total < 0.75 {
-            PentanomialOutcome::LD
-        } else if total < 1.25 {
-            PentanomialOutcome::DDWL
-        } else if total < 1.75 {
-            PentanomialOutcome::WD
-        } else {
-            PentanomialOutcome::WW
+impl Pentanomial {
+    /// Create from pair of dev scores (each 0.0, 0.5, or 1.0)
+    pub fn from_scores(score1: f64, score2: f64) -> Self {
+        match (score1 + score2) as u8 {
+            0 => Self::Ll,
+            1 if (score1 - 0.5).abs() < 0.01 || (score2 - 0.5).abs() < 0.01 => Self::Ld,
+            1 => Self::DdWl,
+            2 if (score1 - 0.5).abs() < 0.01 && (score2 - 0.5).abs() < 0.01 => Self::DdWl,
+            2 => Self::Wd,
+            _ => Self::Ww,
         }
     }
 
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         match self {
-            PentanomialOutcome::LL => 0,
-            PentanomialOutcome::LD => 1,
-            PentanomialOutcome::DDWL => 2,
-            PentanomialOutcome::WD => 3,
-            PentanomialOutcome::WW => 4,
+            Self::Ll => 0,
+            Self::Ld => 1,
+            Self::DdWl => 2,
+            Self::Wd => 3,
+            Self::Ww => 4,
         }
     }
+}
+
+impl fmt::Display for Pentanomial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(match self {
+            Self::Ll => "LL",
+            Self::Ld => "LD",
+            Self::DdWl => "DD/WL",
+            Self::Wd => "WD",
+            Self::Ww => "WW",
+        })
+    }
+}
+
+/// Which engine is at fault
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaultyEngine {
+    Dev,
+    Base,
 }
 
 /// Result of a single game
 #[derive(Debug, Clone)]
 pub struct GameResult {
     pub game: Game,
-    pub outcome: Option<Outcome>,
     /// Score from dev's perspective (1.0 = win, 0.5 = draw, 0.0 = loss)
     pub dev_score: f64,
     /// Termination reason if abnormal
@@ -68,36 +84,26 @@ pub struct GameResult {
     pub faulty_engine: Option<FaultyEngine>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FaultyEngine {
-    Dev,
-    Base,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorKind {
-    Crash,
-    Timeout,
-    IllegalMove,
-    InfiniteLoop,
-}
-
 /// Result of a game pair
 #[derive(Debug)]
 pub struct GamePairResult {
     pub game1: GameResult, // dev plays White
     pub game2: GameResult, // dev plays Black
-    pub outcome: PentanomialOutcome,
-    pub opening: Vec<Mv>,
+    pub outcome: Pentanomial,
 }
 
-/// Match runner that manages concurrent game pairs
-pub struct MatchRunner {
+/// Configuration for running games
+struct GameConfig {
     dev_path: PathBuf,
     base_path: PathBuf,
     time_ms: u64,
     timeout_leniency: f64,
     logs_dir: Option<PathBuf>,
+}
+
+/// Match runner that manages concurrent game pairs
+pub struct MatchRunner {
+    config: GameConfig,
     opening_book: OpeningBook,
     concurrency: usize,
     stop_flag: Arc<AtomicBool>,
@@ -114,63 +120,48 @@ impl MatchRunner {
         concurrency: usize,
         stop_flag: Arc<AtomicBool>,
     ) -> Self {
-        Self { dev_path, base_path, time_ms, timeout_leniency, logs_dir, opening_book, concurrency, stop_flag }
+        Self {
+            config: GameConfig { dev_path, base_path, time_ms, timeout_leniency, logs_dir },
+            opening_book,
+            concurrency,
+            stop_flag,
+        }
     }
 
     /// Run game pairs, yielding results as they complete
     pub fn run_pairs(self, max_pairs: usize) -> impl Iterator<Item = GamePairResult> {
-        let (result_tx, result_rx): (Sender<GamePairResult>, Receiver<GamePairResult>) = mpsc::channel();
-        let (task_tx, task_rx): (Sender<Vec<Mv>>, Receiver<Vec<Mv>>) = mpsc::channel();
-        let task_rx = Arc::new(std::sync::Mutex::new(task_rx));
+        let (result_tx, result_rx) = mpsc::channel();
+        let (task_tx, task_rx) = mpsc::channel::<Vec<Mv>>();
+        let task_rx = Arc::new(Mutex::new(task_rx));
 
         // Spawn worker threads
-        let mut handles: Vec<JoinHandle<()>> = Vec::new();
-        for worker_id in 0..self.concurrency {
-            let dev_path = self.dev_path.clone();
-            let base_path = self.base_path.clone();
-            let time_ms = self.time_ms;
-            let timeout_leniency = self.timeout_leniency;
-            let logs_dir = self.logs_dir.clone();
+        for _ in 0..self.concurrency {
+            let config = GameConfig {
+                dev_path: self.config.dev_path.clone(),
+                base_path: self.config.base_path.clone(),
+                time_ms: self.config.time_ms,
+                timeout_leniency: self.config.timeout_leniency,
+                logs_dir: self.config.logs_dir.clone(),
+            };
             let result_tx = result_tx.clone();
             let task_rx = task_rx.clone();
             let stop_flag = self.stop_flag.clone();
 
-            let handle = thread::spawn(move || {
-                loop {
-                    // Check stop flag
-                    if stop_flag.load(Ordering::SeqCst) {
-                        break;
-                    }
-
-                    // Get next opening
-                    let opening = {
-                        let rx = task_rx.lock().unwrap();
-                        match rx.recv() {
-                            Ok(opening) => opening,
-                            Err(_) => break, // Channel closed
-                        }
+            thread::spawn(move || {
+                while !stop_flag.load(Ordering::SeqCst) {
+                    let opening = match task_rx.lock().unwrap().recv() {
+                        Ok(o) => o,
+                        Err(_) => break,
                     };
-
-                    // Play the game pair
-                    let result = play_game_pair(
-                        &dev_path,
-                        &base_path,
-                        time_ms,
-                        timeout_leniency,
-                        logs_dir.as_ref(),
-                        &opening,
-                        &stop_flag,
-                    );
-
+                    let result = play_game_pair(&config, &opening, &stop_flag);
                     if result_tx.send(result).is_err() {
                         break;
                     }
                 }
             });
-            handles.push(handle);
         }
 
-        // Send tasks
+        // Send tasks in separate thread
         let opening_book = self.opening_book;
         let stop_flag = self.stop_flag.clone();
         thread::spawn(move || {
@@ -178,21 +169,19 @@ impl MatchRunner {
                 if stop_flag.load(Ordering::SeqCst) {
                     break;
                 }
-                let opening = opening_book.get_opening(pair_idx);
-                if task_tx.send(opening).is_err() {
+                if task_tx.send(opening_book.get_opening(pair_idx)).is_err() {
                     break;
                 }
             }
-            // Drop task_tx to signal workers to stop
         });
 
-        // Return iterator over results
+        // Return iterator
         GamePairIterator { result_rx, received: 0, max_pairs, stop_flag: self.stop_flag }
     }
 }
 
 struct GamePairIterator {
-    result_rx: Receiver<GamePairResult>,
+    result_rx: mpsc::Receiver<GamePairResult>,
     received: usize,
     max_pairs: usize,
     stop_flag: Arc<AtomicBool>,
@@ -205,122 +194,58 @@ impl Iterator for GamePairIterator {
         if self.received >= self.max_pairs || self.stop_flag.load(Ordering::SeqCst) {
             return None;
         }
-        match self.result_rx.recv() {
-            Ok(result) => {
-                self.received += 1;
-                Some(result)
-            }
-            Err(_) => None,
-        }
+        self.result_rx.recv().ok().inspect(|_| self.received += 1)
     }
 }
 
 /// Play a single game pair (dev as White, then dev as Black)
-fn play_game_pair(
-    dev_path: &PathBuf,
-    base_path: &PathBuf,
-    time_ms: u64,
-    timeout_leniency: f64,
-    logs_dir: Option<&PathBuf>,
-    opening: &[Mv],
-    stop_flag: &Arc<AtomicBool>,
-) -> GamePairResult {
-    // Game 1: dev plays White
-    let game1 = play_single_game(
-        dev_path,
-        base_path,
-        time_ms,
-        timeout_leniency,
-        logs_dir,
-        opening,
-        true, // dev is White
-        stop_flag,
-    );
-
-    // Game 2: dev plays Black
-    let game2 = play_single_game(
-        dev_path,
-        base_path,
-        time_ms,
-        timeout_leniency,
-        logs_dir,
-        opening,
-        false, // dev is Black
-        stop_flag,
-    );
-
-    let outcome = PentanomialOutcome::from_pair(game1.dev_score, game2.dev_score);
-
-    GamePairResult { game1, game2, outcome, opening: opening.to_vec() }
+fn play_game_pair(config: &GameConfig, opening: &[Mv], stop_flag: &Arc<AtomicBool>) -> GamePairResult {
+    let game1 = play_single_game(config, opening, true, stop_flag);
+    let game2 = play_single_game(config, opening, false, stop_flag);
+    let outcome = Pentanomial::from_scores(game1.dev_score, game2.dev_score);
+    GamePairResult { game1, game2, outcome }
 }
 
 /// Play a single game
 fn play_single_game(
-    dev_path: &PathBuf,
-    base_path: &PathBuf,
-    time_ms: u64,
-    timeout_leniency: f64,
-    logs_dir: Option<&PathBuf>,
+    config: &GameConfig,
     opening: &[Mv],
     dev_is_white: bool,
     stop_flag: &Arc<AtomicBool>,
 ) -> GameResult {
-    // Spawn engines
+    let (dev_path, base_path) = (&config.dev_path, &config.base_path);
     let (white_path, black_path) = if dev_is_white { (dev_path, base_path) } else { (base_path, dev_path) };
 
-    let mut white_engine = match Engine::spawn("white", white_path, time_ms, timeout_leniency, logs_dir.cloned()) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Failed to spawn white engine: {e}");
-            return GameResult {
-                game: Game::new(),
-                outcome: None,
-                dev_score: if dev_is_white { 0.0 } else { 1.0 },
-                termination_reason: Some(format!("Engine spawn failed: {e}")),
-                faulty_engine: Some(if dev_is_white { FaultyEngine::Dev } else { FaultyEngine::Base }),
-            };
-        }
-    };
+    // Spawn engines
+    let mut white =
+        match Engine::spawn("white", white_path, config.time_ms, config.timeout_leniency, config.logs_dir.clone()) {
+            Ok(e) => e,
+            Err(e) => return error_result(Game::new(), dev_is_white, true, format!("Engine spawn failed: {e}")),
+        };
 
-    let mut black_engine = match Engine::spawn("black", black_path, time_ms, timeout_leniency, logs_dir.cloned()) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Failed to spawn black engine: {e}");
-            return GameResult {
-                game: Game::new(),
-                outcome: None,
-                dev_score: if dev_is_white { 1.0 } else { 0.0 },
-                termination_reason: Some(format!("Engine spawn failed: {e}")),
-                faulty_engine: Some(if dev_is_white { FaultyEngine::Base } else { FaultyEngine::Dev }),
-            };
-        }
-    };
-
-    // Initialize game
-    let mut game = Game::new();
+    let mut black =
+        match Engine::spawn("black", black_path, config.time_ms, config.timeout_leniency, config.logs_dir.clone()) {
+            Ok(e) => e,
+            Err(e) => return error_result(Game::new(), dev_is_white, false, format!("Engine spawn failed: {e}")),
+        };
 
     // Sync engines
-    if let Err(e) = white_engine.sync() {
-        eprintln!("White engine sync failed: {e}");
-        return make_error_result(game, dev_is_white, true, "sync_failed", &mut white_engine);
+    if let Err(e) = white.sync() {
+        white.write_log("sync_failed");
+        return error_result(Game::new(), dev_is_white, true, format!("Sync failed: {e}"));
     }
-    if let Err(e) = black_engine.sync() {
-        eprintln!("Black engine sync failed: {e}");
-        return make_error_result(game, dev_is_white, false, "sync_failed", &mut black_engine);
+    if let Err(e) = black.sync() {
+        black.write_log("sync_failed");
+        return error_result(Game::new(), dev_is_white, false, format!("Sync failed: {e}"));
     }
 
-    // Play opening moves
+    // Initialize game and play opening
+    let mut game = Game::new();
     let opening_sqs: Vec<Sq> = opening.iter().filter_map(|mv| Sq::from_raw(mv.sq.raw())).collect();
 
     if !opening_sqs.is_empty() {
-        if let Err(e) = white_engine.play(opening_sqs.clone()) {
-            eprintln!("Failed to send opening to white: {e}");
-        }
-        if let Err(e) = black_engine.play(opening_sqs.clone()) {
-            eprintln!("Failed to send opening to black: {e}");
-        }
-
-        // Update our game state with opening
+        let _ = white.play(opening_sqs.clone());
+        let _ = black.play(opening_sqs);
         for mv in opening {
             if game.play(*mv).is_err() {
                 break;
@@ -329,171 +254,88 @@ fn play_single_game(
     }
 
     // Main game loop
-    let mut move_count = 0;
-    let max_moves = 500; // Prevent infinite games
+    const MAX_MOVES: usize = 500;
 
-    loop {
+    for _move_count in 0..MAX_MOVES {
         if stop_flag.load(Ordering::SeqCst) {
             return GameResult {
                 game,
-                outcome: None,
                 dev_score: 0.5,
                 termination_reason: Some("Match stopped".into()),
                 faulty_engine: None,
             };
         }
 
-        // Check for game over
         if let Some(outcome) = game.outcome() {
-            let dev_score = compute_dev_score(&outcome, dev_is_white);
             return GameResult {
                 game,
-                outcome: Some(outcome),
-                dev_score,
+                dev_score: dev_score(&outcome, dev_is_white),
                 termination_reason: None,
                 faulty_engine: None,
             };
         }
 
-        // Detect infinite loop
-        move_count += 1;
-        if move_count > max_moves {
-            let is_white_turn = game.current_state().side_to_move() == Color::White;
-            let is_dev_turn = (is_white_turn && dev_is_white) || (!is_white_turn && !dev_is_white);
-            eprintln!("Game exceeded {} moves, adjudicating as infinite loop", max_moves);
-            let engine = if is_white_turn { &mut white_engine } else { &mut black_engine };
-            engine.write_log("infinite_loop");
-            return GameResult {
-                game,
-                outcome: None,
-                dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                termination_reason: Some("Infinite loop detected".into()),
-                faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-            };
-        }
-
-        // Get current player
         let is_white_turn = game.current_state().side_to_move() == Color::White;
-        let (current_engine, opponent_engine) =
-            if is_white_turn { (&mut white_engine, &mut black_engine) } else { (&mut black_engine, &mut white_engine) };
+        let (current, opponent) = if is_white_turn { (&mut white, &mut black) } else { (&mut black, &mut white) };
 
-        let is_dev_turn = (is_white_turn && dev_is_white) || (!is_white_turn && !dev_is_white);
-
-        // Request move
-        match current_engine.go(time_ms) {
+        match current.go(config.time_ms) {
             MoveResult::Move(sq) => {
-                // Convert to core type
                 let core_sq = myu_core::Sq::from_raw(sq.raw()).unwrap();
                 let mv = Mv::new(core_sq);
 
-                // Validate and play move
                 match game.play(mv) {
                     Ok(()) => {
-                        // Send move to the engine that made it (to update its state)
-                        if let Err(e) = current_engine.play(vec![sq]) {
-                            eprintln!("Failed to send move to current engine: {e}");
-                        }
-                        // Send move to opponent
-                        if let Err(e) = opponent_engine.play(vec![sq]) {
-                            eprintln!("Failed to send move to opponent: {e}");
-                        }
+                        let _ = current.play(vec![sq]);
+                        let _ = opponent.play(vec![sq]);
                     }
                     Err(e) => {
-                        eprintln!("Illegal move from {}: {e}", current_engine.name());
-                        current_engine.write_log("illegal_move");
-                        return GameResult {
-                            game,
-                            outcome: None,
-                            dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                            termination_reason: Some(format!("Illegal move: {e}")),
-                            faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-                        };
+                        current.write_log("illegal_move");
+                        return error_result(game, dev_is_white, is_white_turn, format!("Illegal move: {e}"));
                     }
                 }
             }
             MoveResult::NoMove => {
-                eprintln!("{} returned no move", current_engine.name());
-                current_engine.write_log("no_move");
-                return GameResult {
-                    game,
-                    outcome: None,
-                    dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                    termination_reason: Some("Engine returned no move".into()),
-                    faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-                };
+                current.write_log("no_move");
+                return error_result(game, dev_is_white, is_white_turn, "Engine returned no move".into());
             }
             MoveResult::Timeout => {
-                eprintln!("{} timed out", current_engine.name());
-                return GameResult {
-                    game,
-                    outcome: None,
-                    dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                    termination_reason: Some("Timeout".into()),
-                    faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-                };
+                return error_result(game, dev_is_white, is_white_turn, "Timeout".into());
             }
             MoveResult::Crash => {
-                eprintln!("{} crashed", current_engine.name());
-                return GameResult {
-                    game,
-                    outcome: None,
-                    dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                    termination_reason: Some("Engine crashed".into()),
-                    faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-                };
+                return error_result(game, dev_is_white, is_white_turn, "Engine crashed".into());
             }
             MoveResult::IllegalProtocol(msg) => {
-                eprintln!("{} protocol error: {msg}", current_engine.name());
-                current_engine.write_log("protocol_error");
-                return GameResult {
-                    game,
-                    outcome: None,
-                    dev_score: if is_dev_turn { 0.0 } else { 1.0 },
-                    termination_reason: Some(format!("Protocol error: {msg}")),
-                    faulty_engine: Some(if is_dev_turn { FaultyEngine::Dev } else { FaultyEngine::Base }),
-                };
+                current.write_log("protocol_error");
+                return error_result(game, dev_is_white, is_white_turn, format!("Protocol error: {msg}"));
             }
-            MoveResult::EngineError(msg) => {
-                eprintln!("{} error: {msg}", current_engine.name());
-                // Engine errors don't cause a loss, just report them
-                continue;
-            }
+            MoveResult::EngineError(_) => continue,
         }
     }
+
+    // Exceeded max moves
+    let is_white_turn = game.current_state().side_to_move() == Color::White;
+    let engine = if is_white_turn { &mut white } else { &mut black };
+    engine.write_log("infinite_loop");
+    error_result(game, dev_is_white, is_white_turn, "Infinite loop detected".into())
 }
 
-fn make_error_result(
-    game: Game,
-    dev_is_white: bool,
-    white_failed: bool,
-    reason: &str,
-    engine: &mut Engine,
-) -> GameResult {
-    engine.write_log(reason);
-    let dev_failed = (dev_is_white && white_failed) || (!dev_is_white && !white_failed);
+fn error_result(game: Game, dev_is_white: bool, white_failed: bool, reason: String) -> GameResult {
+    let dev_failed = dev_is_white == white_failed;
     GameResult {
         game,
-        outcome: None,
         dev_score: if dev_failed { 0.0 } else { 1.0 },
-        termination_reason: Some(reason.to_string()),
+        termination_reason: Some(reason),
         faulty_engine: Some(if dev_failed { FaultyEngine::Dev } else { FaultyEngine::Base }),
     }
 }
 
-fn compute_dev_score(outcome: &Outcome, dev_is_white: bool) -> f64 {
+fn dev_score(outcome: &Outcome, dev_is_white: bool) -> f64 {
     match outcome.winner() {
-        Some(Color::White) => {
-            if dev_is_white {
+        Some(winner) => {
+            if (winner == Color::White) == dev_is_white {
                 1.0
             } else {
                 0.0
-            }
-        }
-        Some(Color::Black) => {
-            if dev_is_white {
-                0.0
-            } else {
-                1.0
             }
         }
         None => 0.5,
