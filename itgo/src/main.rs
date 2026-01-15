@@ -6,50 +6,21 @@
 use std::{
     borrow::Cow,
     io::stdin,
-    panic::{AssertUnwindSafe, catch_unwind, panic_any},
     sync::{Arc, atomic, mpsc::channel},
     thread::spawn,
     time::Instant,
 };
 
-use multiptr::MultiMut;
-use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg, deserialize, serialize};
+use myu_protocol::{EngineMsg, UserMsg, deserialize, serialize};
 
 use crate::{
-    search::ExitSearch,
-    state::{Frame, Global, MakeResult, Thread, apply, make},
+    engine::{Position, Search},
+    state::{Global, MakeResult, apply, make},
 };
 
+pub mod engine;
 pub mod search;
 pub mod state;
-
-#[derive(Debug, Clone)]
-struct Position {
-    stack: Vec<Frame>,
-    index: usize,
-    unplayable: bool,
-}
-
-impl Position {
-    fn frame_ptr(&mut self) -> MultiMut<'_, Frame> {
-        unsafe { MultiMut::from_slice_index(&mut self.stack, self.index) }
-    }
-}
-
-impl Default for Position {
-    fn default() -> Self {
-        Self {
-            stack: (-1..416).map(|ply| Frame { opp_migo: 0, opp_yugo: 0, score: 0, ply, killers: [0, 1] }).collect(),
-            index: 1,
-            unplayable: false,
-        }
-    }
-}
-
-struct Search {
-    position: Position,
-    global: Arc<Global>,
-}
 
 fn main() {
     send(&EngineMsg::Id { name: Some("Itgo".into()), author: None, version: None });
@@ -62,44 +33,7 @@ fn main() {
         }
     });
     let Ok(mut msg) = line_rx.recv() else { return };
-    let (search_tx, search_rx) = channel();
-    spawn(move || {
-        for Search { mut position, global } in search_rx {
-            let f = position.frame_ptr();
-            let mut node_limit = !0;
-            let mut depth_limit = !0;
-            for &limit in &global.limits {
-                match limit {
-                    Limit::Depth(depth) => depth_limit = depth_limit.min(depth),
-                    Limit::Nodes(nodes) => node_limit = node_limit.min(nodes),
-                    Limit::Ms(_) => {}
-                }
-            }
-            let thread = &mut Thread::new(node_limit);
-            let mut best = None;
-            for depth in 1..=depth_limit {
-                let result =
-                    catch_unwind(AssertUnwindSafe(|| search::search(&global, thread, f, depth, -i32::MAX, i32::MAX)));
-                match result {
-                    Ok((eval, mv)) => {
-                        best = Sq::from_raw(mv);
-                        let eval = Eval::Score(eval); // TODO: convert properly
-                        let nodes = thread.nodes;
-                        let time = global.elapsed();
-                        let knps = if time == 0 { nodes } else { nodes / time };
-                        send(&EngineMsg::Info { pv: vec![best.unwrap()], eval, depth, nodes, time, knps });
-                    }
-                    Err(e) => {
-                        if e.downcast_ref::<ExitSearch>().is_none() {
-                            panic_any(e);
-                        }
-                        break;
-                    }
-                }
-            }
-            send(&EngineMsg::Best(best));
-        }
-    });
+    let search_tx = engine::start();
     let mut position = Position::default();
     let mut global: Option<Arc<Global>> = None;
     loop {
