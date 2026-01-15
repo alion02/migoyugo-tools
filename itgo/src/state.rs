@@ -6,6 +6,22 @@ use std::{
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
+pub const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 8, 7]);
+pub const SHR_MASK: [u64x4; 8] = {
+    let mut simd_masks = [[!0u64; 4]; 8];
+    simd_masks[1] = [0x7F7F7F7F7F7F7F7F, 0x007F7F7F7F7F7F7F, 0x00FFFFFFFFFFFFFF, 0x00FEFEFEFEFEFEFE];
+    let mut i = 2;
+    while i < 8 {
+        let mut j = 0;
+        while j < 4 {
+            simd_masks[i][j] = simd_masks[i - 1][j] & simd_masks[i - 1][j] >> DIRECTIONS.as_array()[j];
+            j += 1;
+        }
+        i += 1;
+    }
+    unsafe { transmute(simd_masks) }
+};
+
 pub struct Global {
     pub started_at: Instant,
     pub stop: AtomicBool,
@@ -60,7 +76,6 @@ pub struct MakeData {
 }
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
-    const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 8, 7]);
     let [p, c] = f.as_array(-1);
     let bit = 1 << mv;
     let mut migo = p.opp_migo | bit;
@@ -69,7 +84,7 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     let mut masks = Simd::splat(migo | yugo);
     masks &= masks >> DIRECTIONS;
     masks &= masks >> DIRECTIONS >> DIRECTIONS;
-    masks &= Simd::from_array([0x1F1F1F1F1F1F1F1F, 0x0000001F1F1F1F1F, 0x000000FFFFFFFFFF, 0x000000F8F8F8F8F8]);
+    masks &= SHR_MASK[3];
     let line_4 = masks;
     'b: {
         if line_4.reduce_or() == 0 {

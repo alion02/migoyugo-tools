@@ -1,9 +1,9 @@
-use std::{cmp::Ordering, panic::resume_unwind, sync::atomic};
+use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{Frame, Global, MakeResult, Thread, apply, make};
+use crate::state::{DIRECTIONS, Frame, Global, MakeResult, SHR_MASK, Thread, apply, make};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -40,9 +40,22 @@ pub fn search(
         match make(f, mv) {
             MakeResult::Ok(new) => {
                 let value = -if depth == 0 {
-                    (c.opp_migo.count_ones() as i32 - new.migo.count_ones() as i32)
-                        + (c.opp_yugo.count_ones() as i32 - new.yugo.count_ones() as i32) * 64
-                        + new.score * 16
+                    let my_migos = c.opp_migo.count_ones() as i32;
+                    let my_yugos = c.opp_yugo.count_ones() as i32;
+                    let my_simd_pieces = Simd::splat(c.opp_migo | c.opp_yugo);
+                    let my_coherence_masks = my_simd_pieces & my_simd_pieces >> DIRECTIONS & SHR_MASK[1];
+                    let my_coherence = my_coherence_masks.count_ones().reduce_sum() as i32;
+
+                    let opp_migos = new.migo.count_ones() as i32;
+                    let opp_yugos = new.yugo.count_ones() as i32;
+                    let opp_simd_pieces = Simd::splat(new.migo | new.yugo);
+                    let opp_coherence_masks = opp_simd_pieces & opp_simd_pieces >> DIRECTIONS & SHR_MASK[1];
+                    let opp_coherence = opp_coherence_masks.count_ones().reduce_sum() as i32;
+
+                    new.score * 16
+                        + (my_migos - opp_migos)
+                        + (my_yugos - opp_yugos) * 64
+                        + (my_coherence - opp_coherence)
                 } else {
                     let f = f.offset(1);
                     apply(f, new);
