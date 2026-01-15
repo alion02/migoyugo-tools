@@ -43,14 +43,20 @@ pub fn search(
                     let my_migos = c.opp_migo.count_ones() as i32;
                     let my_yugos = c.opp_yugo.count_ones() as i32;
                     let my_simd_pieces = Simd::splat(c.opp_migo | c.opp_yugo);
-                    let my_coherence_masks = my_simd_pieces & my_simd_pieces >> DIRECTIONS & SHR_MASK[1];
-                    let my_coherence = my_coherence_masks.count_ones().reduce_sum() as i32;
+                    let my_coherence_masks_near = my_simd_pieces & my_simd_pieces >> DIRECTIONS & SHR_MASK[1];
+                    let my_coherence_masks_far =
+                        my_simd_pieces & my_simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
+                    let my_coherence = my_coherence_masks_near.count_ones().reduce_sum() as i32
+                        + my_coherence_masks_far.count_ones().reduce_sum() as i32;
 
                     let opp_migos = new.migo.count_ones() as i32;
                     let opp_yugos = new.yugo.count_ones() as i32;
                     let opp_simd_pieces = Simd::splat(new.migo | new.yugo);
-                    let opp_coherence_masks = opp_simd_pieces & opp_simd_pieces >> DIRECTIONS & SHR_MASK[1];
-                    let opp_coherence = opp_coherence_masks.count_ones().reduce_sum() as i32;
+                    let opp_coherence_masks_near = opp_simd_pieces & opp_simd_pieces >> DIRECTIONS & SHR_MASK[1];
+                    let opp_coherence_masks_far =
+                        opp_simd_pieces & opp_simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
+                    let opp_coherence = opp_coherence_masks_near.count_ones().reduce_sum() as i32
+                        + opp_coherence_masks_far.count_ones().reduce_sum() as i32;
 
                     new.score * 16
                         + (my_migos - opp_migos)
