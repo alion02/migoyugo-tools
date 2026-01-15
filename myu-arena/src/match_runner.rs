@@ -32,13 +32,17 @@ pub enum Pentanomial {
 impl Pentanomial {
     /// Create from pair of dev scores (each 0.0, 0.5, or 1.0)
     pub fn from_scores(score1: f64, score2: f64) -> Self {
-        match (score1 + score2) as u8 {
-            0 => Self::Ll,
-            1 if (score1 - 0.5).abs() < 0.01 || (score2 - 0.5).abs() < 0.01 => Self::Ld,
-            1 => Self::DdWl,
-            2 if (score1 - 0.5).abs() < 0.01 && (score2 - 0.5).abs() < 0.01 => Self::DdWl,
-            2 => Self::Wd,
-            _ => Self::Ww,
+        let total = score1 + score2;
+        if total < 0.5 {
+            Self::Ll
+        } else if total < 1.0 {
+            Self::Ld
+        } else if total < 1.5 {
+            Self::DdWl
+        } else if total < 2.0 {
+            Self::Wd
+        } else {
+            Self::Ww
         }
     }
 
