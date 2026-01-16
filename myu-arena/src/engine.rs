@@ -112,7 +112,7 @@ impl Engine {
                 match reader.read_line(&mut line) {
                     Ok(0) => {
                         // EOF - engine closed stdout
-                        let _ = msg_tx.send(Err("Engine closed stdout".into()));
+                        _ = msg_tx.send(Err("Engine closed stdout".into()));
                         break;
                     }
                     Ok(_) => {
@@ -134,7 +134,7 @@ impl Engine {
                         }
                     }
                     Err(e) => {
-                        let _ = msg_tx.send(Err(format!("Read error: {e}")));
+                        _ = msg_tx.send(Err(format!("Read error: {e}")));
                         break;
                     }
                 }
@@ -316,8 +316,8 @@ impl Engine {
 
     /// Kill the engine process
     pub fn kill(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        _ = self.child.kill();
+        _ = self.child.wait();
     }
 }
 

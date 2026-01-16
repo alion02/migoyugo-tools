@@ -435,8 +435,8 @@ fn play_single_game(
     let opening_sqs: Vec<_> = opening.iter().map(|mv| mv.sq.into()).collect();
 
     if !opening_sqs.is_empty() {
-        let _ = white.play(opening_sqs.clone());
-        let _ = black.play(opening_sqs);
+        _ = white.play(opening_sqs.clone());
+        _ = black.play(opening_sqs);
         for mv in opening {
             if game.play(*mv).is_err() {
                 break;
@@ -470,8 +470,8 @@ fn spawn_error_result(config: &GameConfig, dev: &mut ManagedEngine, base: &mut M
     let base_failed = base.needs_respawn();
 
     // Try to respawn for subsequent games
-    let _ = dev.ensure_ready(config);
-    let _ = base.ensure_ready(config);
+    _ = dev.ensure_ready(config);
+    _ = base.ensure_ready(config);
 
     let (faulty, dev_score) = match (dev_failed, base_failed) {
         (true, false) => (Some(FaultyEngine::Dev), Score::Loss),
@@ -521,8 +521,8 @@ fn run_game_loop(
                 let mv = Mv::new(sq.into());
                 match game.play(mv) {
                     Ok(()) => {
-                        let _ = current.play(vec![sq]);
-                        let _ = opponent.play(vec![sq]);
+                        _ = current.play(vec![sq]);
+                        _ = opponent.play(vec![sq]);
                     }
                     Err(e) => {
                         current.write_log(LogReason::IllegalMove);

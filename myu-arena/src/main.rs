@@ -60,7 +60,7 @@ fn run_test(args: TestArgs) {
     let mut sprt = SprtState::new(args.alpha, args.beta, args.elo0, args.elo1);
 
     print_header(&args, &sprt, &opening_book);
-    let _ = std::io::stdout().flush();
+    _ = std::io::stdout().flush();
 
     let start_time = Instant::now();
     let runner = MatchRunner::new(
