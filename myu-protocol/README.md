@@ -27,7 +27,7 @@ Communication happens over standard input and standard output. Each message is a
 *   `Id { ... }`: Sent at startup with engine name, author, and version.
 *   `Ready`: Sent in response to `Sync`.
 *   `Info { ... }`: Periodic search updates (depth, nodes, time, pv, evaluation).
-*   `Best(Option<Sq>)`: The best move found after a search completes or is stopped.
+*   `Best(Option<Sq>)`: The best move found after a search completes or is stopped. Always paired with a corresponding `Go`.
 *   `Error(String)`: Error message.
 
 ## Example Session
@@ -37,7 +37,6 @@ Communication happens over standard input and standard output. Each message is a
 Id(name:Some("Itgo"),author:None,version:None)
 
 // User sets up a game
-Reset
 Play(["d4"])
 
 // User asks engine to think for 1 second
@@ -59,5 +58,5 @@ Ready
 ## Implementation Notes
 
 *   **Squares**: Represented as strings (e.g., "a1", "h8") in the serialized format.
-*   **Synchronization**: The `Sync` command is crucial for ensuring the engine is in a known state before starting a new game or search, especially when interacting with an arena or GUI.
+*   **Synchronization**: The `Sync` command is crucial for waiting for the engine to finish processing a message or series of messages, ensuring it is in a known state before starting a new game or search, especially when interacting with an arena or GUI.
 *   **Search**: When `Go` is received, the engine should start a search in a separate thread/task. It should periodically send `Info` messages and check for `Stop` or other input. `Reset`, `Undo`, and `Play` should implicitly stop any running search.
