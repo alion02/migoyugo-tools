@@ -29,6 +29,7 @@ pub enum Commands {
 }
 
 #[derive(Parser, Debug)]
+#[command(args_override_self = true)]
 pub struct TestArgs {
     /// Path to the 'dev' engine executable
     #[arg(long)]
