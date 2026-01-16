@@ -196,26 +196,24 @@ fn print_progress(
 fn write_games_to_file(writer: &Mutex<BufWriter<File>>, pair: &GamePairResult, round: usize, pgn_format: &PgnFormat) {
     let mut w = writer.lock().unwrap();
 
-    // Macro to handle writeln errors to avoid repetitive error handling code
-    macro_rules! write_line {
-        ($($arg:tt)*) => {
-            if let Err(e) = writeln!(w, $($arg)*) {
-                eprintln!("Error writing to games file: {}", e);
+    let result: std::io::Result<()> = (|| {
+        for (i, game_result) in [&pair.game1, &pair.game2].iter().enumerate() {
+            let dev_color = if i == 0 { "White" } else { "Black" };
+            writeln!(w, "[Event \"SPRT Test\"]")?;
+            writeln!(w, "[Round \"{round}\"]")?;
+            writeln!(w, "[Dev \"{dev_color}\"]")?;
+            if let Some(ref termination) = game_result.termination {
+                writeln!(w, "[Termination \"{}\"]", termination.details)?;
             }
-        };
-    }
-
-    for (i, game_result) in [&pair.game1, &pair.game2].iter().enumerate() {
-        let dev_color = if i == 0 { "White" } else { "Black" };
-        write_line!("[Event \"SPRT Test\"]");
-        write_line!("[Round \"{round}\"]");
-        write_line!("[Dev \"{dev_color}\"]");
-        if let Some(ref termination) = game_result.termination {
-            write_line!("[Termination \"{}\"]", termination.details);
+            let game_str = format_game(&game_result.game, pgn_format, true, true);
+            writeln!(w, "{game_str}")?;
+            writeln!(w)?;
         }
-        let game_str = format_game(&game_result.game, pgn_format, true, true);
-        write_line!("{game_str}");
-        write_line!();
+        Ok(())
+    })();
+
+    if let Err(e) = result {
+        eprintln!("Error writing to games file: {}", e);
     }
     if let Err(e) = w.flush() {
         eprintln!("Error flushing games file: {}", e);
