@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::match_runner::{FaultyEngine, GamePairResult, Pentanomial};
+use crate::match_runner::{FaultyEngine, GamePairResult, Pentanomial, Score, TerminationKind};
 
 /// Pentanomial counts: [LL, LD, DD/WL, WD, WW]
 #[derive(Debug, Default, Clone, Copy)]
@@ -52,29 +52,35 @@ impl MatchStats {
         for result in [&pair.game1, &pair.game2] {
             // Record win/loss/draw
             match result.dev_score {
-                0.0 => self.dev_losses += 1,
-                0.5 => self.draws += 1,
-                1.0 => self.dev_wins += 1,
-                _ => unreachable!(),
+                Score::Loss => self.dev_losses += 1,
+                Score::Draw => self.draws += 1,
+                Score::Win => self.dev_wins += 1,
             }
 
             // Record errors
-            if let Some(ref reason) = result.termination_reason {
-                let is_dev = result.faulty_engine == Some(FaultyEngine::Dev);
-                let reason = reason.to_lowercase();
+            if let Some(ref termination) = result.termination {
+                let is_dev = termination.faulty_engine == Some(FaultyEngine::Dev);
 
                 let inc = |dev: &mut u64, base: &mut u64| {
                     *(if is_dev { dev } else { base }) += 1;
                 };
 
-                if reason.contains("crash") || reason.contains("spawn") {
-                    inc(&mut self.dev_crashes, &mut self.base_crashes);
-                } else if reason.contains("timeout") {
-                    inc(&mut self.dev_timeouts, &mut self.base_timeouts);
-                } else if reason.contains("illegal") {
-                    inc(&mut self.dev_illegal_moves, &mut self.base_illegal_moves);
-                } else if reason.contains("loop") {
-                    inc(&mut self.dev_infinite_loops, &mut self.base_infinite_loops);
+                match termination.kind {
+                    TerminationKind::Crash | TerminationKind::SpawnFailed | TerminationKind::SyncFailed => {
+                        inc(&mut self.dev_crashes, &mut self.base_crashes);
+                    }
+                    TerminationKind::Timeout => {
+                        inc(&mut self.dev_timeouts, &mut self.base_timeouts);
+                    }
+                    TerminationKind::IllegalMove | TerminationKind::ProtocolError | TerminationKind::NoMove => {
+                        inc(&mut self.dev_illegal_moves, &mut self.base_illegal_moves);
+                    }
+                    TerminationKind::InfiniteLoop => {
+                        inc(&mut self.dev_infinite_loops, &mut self.base_infinite_loops);
+                    }
+                    TerminationKind::Stopped => {
+                        // Not a fault, don't record
+                    }
                 }
             }
         }

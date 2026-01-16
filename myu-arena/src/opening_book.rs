@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use myu_core::{Mv, parse_sq};
+use myu_core::{Mv, State, parse_sq};
 
 /// Opening book: a collection of opening move sequences
 pub struct OpeningBook {
@@ -48,12 +48,13 @@ impl OpeningBook {
             openings.push(vec![]); // At least one empty opening
         }
 
-        Ok(Self { openings })
+        let mut book = Self { openings };
+        book.validate()?;
+        Ok(book)
     }
 
     /// Generate a random opening book with n random openings of the given depth
     pub fn generate_random(count: usize, depth: usize) -> Self {
-        use myu_core::State;
         use rand::prelude::*;
 
         let mut rng = rand::rng();
@@ -81,6 +82,51 @@ impl OpeningBook {
         }
 
         Self { openings }
+    }
+
+    /// Validate all openings by replaying them from the initial position
+    fn validate(&mut self) -> Result<(), String> {
+        let mut invalid_indices = Vec::new();
+
+        for (idx, opening) in self.openings.iter().enumerate() {
+            if let Err(e) = Self::validate_opening(opening) {
+                eprintln!("Warning: opening {} is invalid: {}", idx + 1, e);
+                invalid_indices.push(idx);
+            }
+        }
+
+        // Remove invalid openings in reverse order to preserve indices
+        for idx in invalid_indices.into_iter().rev() {
+            self.openings.remove(idx);
+        }
+
+        // Ensure we still have at least one opening
+        if self.openings.is_empty() {
+            return Err("No valid openings in book after validation".into());
+        }
+
+        Ok(())
+    }
+
+    /// Validate a single opening by replaying it from the initial position
+    fn validate_opening(opening: &[Mv]) -> Result<(), String> {
+        let mut state = State::new();
+
+        for (move_idx, mv) in opening.iter().enumerate() {
+            match state.play(*mv) {
+                Ok((new_state, _)) => state = new_state,
+                Err(e) => {
+                    return Err(format!("move {} ({}): {}", move_idx + 1, myu_core::format_sq(mv.sq), e));
+                }
+            }
+        }
+
+        // Check if the position is still playable (not a terminal position)
+        if state.legal_moves().next().is_none() {
+            return Err("opening leads to terminal position".into());
+        }
+
+        Ok(())
     }
 
     /// Save opening book to file
@@ -135,5 +181,15 @@ mod tests {
         assert_eq!(book.get_opening(0), book.get_opening(3));
         assert_eq!(book.get_opening(1), book.get_opening(4));
         assert_eq!(book.get_opening(2), book.get_opening(5));
+    }
+
+    #[test]
+    fn test_validation() {
+        // Generated openings should always be valid
+        let book = OpeningBook::generate_random(10, 6);
+        for i in 0..10 {
+            let opening = book.get_opening(i);
+            assert!(OpeningBook::validate_opening(&opening).is_ok());
+        }
     }
 }

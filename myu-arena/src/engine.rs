@@ -26,6 +26,32 @@ pub enum LogDirection {
     Received,
 }
 
+/// Reason for writing a log file
+#[derive(Debug, Clone, Copy)]
+pub enum LogReason {
+    SyncFailed,
+    IllegalMove,
+    NoMove,
+    Timeout,
+    Crash,
+    ProtocolError,
+    InfiniteLoop,
+}
+
+impl LogReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SyncFailed => "sync_failed",
+            Self::IllegalMove => "illegal_move",
+            Self::NoMove => "no_move",
+            Self::Timeout => "timeout",
+            Self::Crash => "crash",
+            Self::ProtocolError => "protocol_error",
+            Self::InfiniteLoop => "infinite_loop",
+        }
+    }
+}
+
 /// Result of waiting for a move from the engine
 #[derive(Debug)]
 pub enum MoveResult {
@@ -34,7 +60,7 @@ pub enum MoveResult {
     Timeout,
     Crash,
     #[allow(dead_code)]
-    IllegalProtocol(String),
+    ProtocolError(String),
     #[allow(dead_code)]
     EngineError(String),
 }
@@ -164,18 +190,18 @@ impl Engine {
     }
 
     /// Write the communication log to the logs directory
-    pub fn write_log(&self, reason: &str) {
+    pub fn write_log(&self, reason: LogReason) {
         let Some(ref logs_dir) = self.logs_dir else { return };
 
         let timestamp =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
 
-        let filename = format!("{}_{timestamp}_{reason}.log", self.name);
+        let filename = format!("{}_{timestamp}_{}.log", self.name, reason.as_str());
         let path = logs_dir.join(filename);
 
         if let Ok(mut file) = File::create(&path) {
             writeln!(file, "Engine: {} ({})", self.name, self.path.display()).ok();
-            writeln!(file, "Reason: {reason}").ok();
+            writeln!(file, "Reason: {}", reason.as_str()).ok();
             writeln!(file, "---").ok();
             for entry in &self.log {
                 let dir = match entry.direction {
@@ -236,7 +262,7 @@ impl Engine {
     /// The function will wait up to `self.timeout_ms` (which includes leniency) for a response.
     pub fn go(&mut self, time_limit_ms: u64) -> MoveResult {
         if let Err(_e) = self.send_message(&UserMsg::Go(vec![Limit::Ms(time_limit_ms)])) {
-            self.write_log("crash");
+            self.write_log(LogReason::Crash);
             return MoveResult::Crash;
         }
 
@@ -246,7 +272,7 @@ impl Engine {
         loop {
             let remaining = timeout.saturating_sub(start.elapsed());
             if remaining.is_zero() {
-                self.write_log("timeout");
+                self.write_log(LogReason::Timeout);
                 return MoveResult::Timeout;
             }
 
@@ -266,7 +292,7 @@ impl Engine {
                 Ok(None) => continue, // Timeout on recv, keep waiting
                 Err(e) => {
                     eprintln!("[{}] Communication error: {}", self.name, e);
-                    self.write_log("crash");
+                    self.write_log(LogReason::Crash);
                     return MoveResult::Crash;
                 }
             }

@@ -19,7 +19,7 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Commands, TestArgs};
 use gsprt::{GsprtResult, SprtState};
-use match_runner::MatchRunner;
+use match_runner::{GamePairResult, MatchRunner};
 use myu_core::{MvFormat, PgnFormat, format_game};
 use opening_book::OpeningBook;
 use stats::MatchStats;
@@ -167,7 +167,7 @@ fn print_header(args: &TestArgs, sprt: &SprtState, opening_book: &OpeningBook) {
 }
 
 fn print_progress(
-    pair_result: &match_runner::GamePairResult,
+    pair_result: &GamePairResult,
     stats: &MatchStats,
     sprt: &SprtState,
     completed_pairs: usize,
@@ -192,12 +192,7 @@ fn print_progress(
     );
 }
 
-fn write_games_to_file(
-    writer: &Mutex<BufWriter<File>>,
-    pair: &match_runner::GamePairResult,
-    round: usize,
-    pgn_format: &PgnFormat,
-) {
+fn write_games_to_file(writer: &Mutex<BufWriter<File>>, pair: &GamePairResult, round: usize, pgn_format: &PgnFormat) {
     let mut w = writer.lock().unwrap();
 
     // Macro to handle writeln errors to avoid repetitive error handling code
@@ -214,8 +209,8 @@ fn write_games_to_file(
         write_line!("[Event \"SPRT Test\"]");
         write_line!("[Round \"{round}\"]");
         write_line!("[Dev \"{dev_color}\"]");
-        if let Some(ref reason) = game_result.termination_reason {
-            write_line!("[Termination \"{reason}\"]");
+        if let Some(ref termination) = game_result.termination {
+            write_line!("[Termination \"{}\"]", termination.details);
         }
         let game_str = format_game(&game_result.game, pgn_format, true, true);
         write_line!("{game_str}");
