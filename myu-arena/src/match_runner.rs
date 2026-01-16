@@ -219,26 +219,33 @@ fn play_single_game(
     let (white_path, black_path) = if dev_is_white { (dev_path, base_path) } else { (base_path, dev_path) };
 
     // Spawn engines
-    let mut white =
-        match Engine::spawn("white", white_path, config.time_ms, config.timeout_leniency, config.logs_dir.clone()) {
-            Ok(e) => e,
-            Err(e) => return error_result(Game::new(), dev_is_white, true, format!("Engine spawn failed: {e}")),
-        };
+    let spawn = |name, path: &PathBuf, is_white| {
+        Engine::spawn(name, path, config.time_ms, config.timeout_leniency, config.logs_dir.clone())
+            .map_err(|e| error_result(Game::new(), dev_is_white, is_white, format!("Engine spawn failed: {e}")))
+    };
 
-    let mut black =
-        match Engine::spawn("black", black_path, config.time_ms, config.timeout_leniency, config.logs_dir.clone()) {
-            Ok(e) => e,
-            Err(e) => return error_result(Game::new(), dev_is_white, false, format!("Engine spawn failed: {e}")),
-        };
+    let mut white = match spawn("white", white_path, true) {
+        Ok(e) => e,
+        Err(r) => return r,
+    };
+    let mut black = match spawn("black", black_path, false) {
+        Ok(e) => e,
+        Err(r) => return r,
+    };
 
     // Sync engines
-    if let Err(e) = white.sync() {
-        white.write_log("sync_failed");
-        return error_result(Game::new(), dev_is_white, true, format!("Sync failed: {e}"));
+    let sync = |engine: &mut Engine, is_white| {
+        engine.sync().map_err(|e| {
+            engine.write_log("sync_failed");
+            error_result(Game::new(), dev_is_white, is_white, format!("Sync failed: {e}"))
+        })
+    };
+
+    if let Err(r) = sync(&mut white, true) {
+        return r;
     }
-    if let Err(e) = black.sync() {
-        black.write_log("sync_failed");
-        return error_result(Game::new(), dev_is_white, false, format!("Sync failed: {e}"));
+    if let Err(r) = sync(&mut black, false) {
+        return r;
     }
 
     // Initialize game and play opening

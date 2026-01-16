@@ -141,12 +141,12 @@ impl Engine {
         // Engines should send Id message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Ok(EngineMsg::Id { name, .. })) => {
-                self.log_received(&format!("Id(name: {:?})", name));
+                self.log(LogDirection::Received, &format!("Id(name: {:?})", name));
                 self.engine_name = name.map(|s| s.to_string());
                 Ok(())
             }
             Ok(Ok(msg)) => {
-                self.log_received(&format!("{:?}", msg));
+                self.log(LogDirection::Received, &format!("{:?}", msg));
                 Err(format!("Engine {} sent {:?} instead of Id", self.name, msg))
             }
             Ok(Err(e)) => Err(e),
@@ -155,18 +155,10 @@ impl Engine {
         }
     }
 
-    fn log_sent(&mut self, content: &str) {
+    fn log(&mut self, direction: LogDirection, content: &str) {
         self.log.push(LogEntry {
             timestamp_ms: self.start_time.elapsed().as_millis() as u64,
-            direction: LogDirection::Sent,
-            content: content.to_string(),
-        });
-    }
-
-    fn log_received(&mut self, content: &str) {
-        self.log.push(LogEntry {
-            timestamp_ms: self.start_time.elapsed().as_millis() as u64,
-            direction: LogDirection::Received,
+            direction,
             content: content.to_string(),
         });
     }
@@ -197,7 +189,7 @@ impl Engine {
 
     fn send_message(&mut self, msg: &UserMsg) -> Result<(), String> {
         let line = serialize(msg).map_err(|e| format!("Serialization error: {e}"))?;
-        self.log_sent(&line);
+        self.log(LogDirection::Sent, &line);
         writeln!(self.stdin, "{line}").map_err(|e| format!("Write error: {e}"))?;
         self.stdin.flush().map_err(|e| format!("Flush error: {e}"))?;
         Ok(())
@@ -206,7 +198,7 @@ impl Engine {
     fn recv_message_timeout(&mut self, timeout: Duration) -> Result<Option<EngineMsg>, String> {
         match self.msg_rx.recv_timeout(timeout) {
             Ok(Ok(msg)) => {
-                self.log_received(&format!("{:?}", msg));
+                self.log(LogDirection::Received, &format!("{:?}", msg));
                 Ok(Some(msg))
             }
             Ok(Err(e)) => Err(e),

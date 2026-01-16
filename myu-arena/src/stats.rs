@@ -63,30 +63,18 @@ impl MatchStats {
                 let is_dev = result.faulty_engine == Some(FaultyEngine::Dev);
                 let reason = reason.to_lowercase();
 
-                let (crashes, timeouts, illegal, loops) = if is_dev {
-                    (
-                        &mut self.dev_crashes,
-                        &mut self.dev_timeouts,
-                        &mut self.dev_illegal_moves,
-                        &mut self.dev_infinite_loops,
-                    )
-                } else {
-                    (
-                        &mut self.base_crashes,
-                        &mut self.base_timeouts,
-                        &mut self.base_illegal_moves,
-                        &mut self.base_infinite_loops,
-                    )
+                let inc = |dev: &mut u64, base: &mut u64| {
+                    *(if is_dev { dev } else { base }) += 1;
                 };
 
                 if reason.contains("crash") || reason.contains("spawn") {
-                    *crashes += 1;
+                    inc(&mut self.dev_crashes, &mut self.base_crashes);
                 } else if reason.contains("timeout") {
-                    *timeouts += 1;
+                    inc(&mut self.dev_timeouts, &mut self.base_timeouts);
                 } else if reason.contains("illegal") {
-                    *illegal += 1;
+                    inc(&mut self.dev_illegal_moves, &mut self.base_illegal_moves);
                 } else if reason.contains("loop") {
-                    *loops += 1;
+                    inc(&mut self.dev_infinite_loops, &mut self.base_infinite_loops);
                 }
             }
         }
