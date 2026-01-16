@@ -159,7 +159,7 @@ impl State {
 
             // Remove all migos in completed lines (but not yugos)
             let mut to_remove = 0u64;
-            for line in &lines[..yugos_formed as usize] {
+            for line in &lines[..yugos_formed] {
                 for &sq in line {
                     to_remove |= sq.bit();
                 }
@@ -168,20 +168,21 @@ impl State {
             to_remove &= !new_state.white_yugos;
             to_remove &= !new_state.black_yugos;
 
+            let yugos_formed_u8 = yugos_formed as u8;
             match color {
                 Color::White => {
                     new_state.white_migos &= !to_remove;
-                    new_state.white_score += yugos_formed;
+                    new_state.white_score += yugos_formed_u8;
                 }
                 Color::Black => {
                     new_state.black_migos &= !to_remove;
-                    new_state.black_score += yugos_formed;
+                    new_state.black_score += yugos_formed_u8;
                 }
             }
         }
 
         new_state.side_to_move = color.flip();
-        (new_state, yugos_formed)
+        (new_state, yugos_formed as u8)
     }
 
     /// Compute the game outcome.
@@ -241,9 +242,9 @@ impl State {
         count
     }
 
-    fn find_completed_lines(&self, sq: Sq, color: Color, lines: &mut [[Sq; 4]; 4]) -> u8 {
+    fn find_completed_lines(&self, sq: Sq, color: Color, lines: &mut [[Sq; 4]; 4]) -> usize {
         let pieces = self.all_pieces(color);
-        let mut count: u8 = 0;
+        let mut count = 0;
 
         for (dc, dr) in [(1i8, 0i8), (0, 1), (1, 1), (1, -1)] {
             let behind = self.count_in_direction(sq, -dc, -dr, pieces);
@@ -255,7 +256,7 @@ impl State {
                 let start_c = sq.col() as i8 - dc * behind as i8;
                 let start_r = sq.row() as i8 - dr * behind as i8;
 
-                lines[count as usize] = std::array::from_fn(|i| {
+                lines[count] = std::array::from_fn(|i| {
                     let c = (start_c + dc * i as i8) as u8;
                     let r = (start_r + dr * i as i8) as u8;
                     Sq::from_col_row(c, r).unwrap()
