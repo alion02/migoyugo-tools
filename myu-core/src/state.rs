@@ -141,8 +141,8 @@ impl State {
         }
 
         // Check for completed lines of 4
-        let lines = new_state.find_completed_lines(mv.sq, color);
-        let yugos_formed = lines.len() as u8;
+        let mut lines = [[Sq::A1; 4]; 4];
+        let yugos_formed = new_state.find_completed_lines(mv.sq, color, &mut lines);
 
         if yugos_formed > 0 {
             // The placed piece becomes a yugo
@@ -159,7 +159,7 @@ impl State {
 
             // Remove all migos in completed lines (but not yugos)
             let mut to_remove = 0u64;
-            for line in &lines {
+            for line in &lines[..yugos_formed as usize] {
                 for &sq in line {
                     to_remove |= sq.bit();
                 }
@@ -241,9 +241,9 @@ impl State {
         count
     }
 
-    fn find_completed_lines(&self, sq: Sq, color: Color) -> Vec<[Sq; 4]> {
+    fn find_completed_lines(&self, sq: Sq, color: Color, lines: &mut [[Sq; 4]; 4]) -> u8 {
         let pieces = self.all_pieces(color);
-        let mut lines = Vec::new();
+        let mut count = 0;
 
         for (dc, dr) in [(1i8, 0i8), (0, 1), (1, 1), (1, -1)] {
             let behind = self.count_in_direction(sq, -dc, -dr, pieces);
@@ -255,15 +255,15 @@ impl State {
                 let start_c = sq.col() as i8 - dc * behind as i8;
                 let start_r = sq.row() as i8 - dr * behind as i8;
 
-                let line = std::array::from_fn(|i| {
+                lines[count] = std::array::from_fn(|i| {
                     let c = (start_c + dc * i as i8) as u8;
                     let r = (start_r + dr * i as i8) as u8;
                     Sq::from_col_row(c, r).unwrap()
                 });
-                lines.push(line);
+                count += 1;
             }
         }
-        lines
+        count as u8
     }
 
     fn has_yugo_line_of_4(&self, color: Color) -> bool {
