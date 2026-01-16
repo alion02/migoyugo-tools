@@ -184,7 +184,7 @@ fn print_progress(
         stats.dev_losses,
         stats.draws,
         stats.dev_score_pct(),
-        *stats.pentanomial,
+        stats.pentanomial.0,
         sprt.elo_estimate(&stats.pentanomial),
         sprt.llr(),
         sprt.lower_bound(),
