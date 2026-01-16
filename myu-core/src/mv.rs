@@ -2,6 +2,7 @@ use crate::{ParseMvError, Sq, format_sq, parse_sq};
 
 /// A single move: placement at a square.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Mv {
     /// The square where the piece is placed.
     pub sq: Sq,
@@ -25,6 +26,7 @@ impl Mv {
 
 /// Move format for parsing and stringification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MvFormat {
     /// Plain square notation: "d4"
     #[default]

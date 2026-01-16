@@ -4,6 +4,8 @@
 /// - Column 0 = 'a', column 7 = 'h'
 /// - Row 0 = '1', row 7 = '8'
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "&str", into = "String"))]
 pub struct Sq(u8);
 
 impl Sq {
@@ -50,6 +52,22 @@ impl Sq {
 }
 
 use crate::ParseSqError;
+
+#[cfg(feature = "serde")]
+impl TryFrom<&str> for Sq {
+    type Error = ParseSqError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        parse_sq(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<Sq> for String {
+    fn from(value: Sq) -> Self {
+        format_sq(value)
+    }
+}
 
 /// Parse algebraic notation (e.g., "a1", "h8").
 pub fn parse_sq(s: &str) -> Result<Sq, ParseSqError> {

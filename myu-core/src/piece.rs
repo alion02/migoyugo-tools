@@ -1,5 +1,6 @@
 /// Player color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Color {
     White,
     Black,
@@ -18,6 +19,7 @@ impl Color {
 
 /// Kind of piece.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PieceKind {
     Migo,
     Yugo,
@@ -25,6 +27,7 @@ pub enum PieceKind {
 
 /// A piece on the board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Piece {
     pub kind: PieceKind,
     pub color: Color,

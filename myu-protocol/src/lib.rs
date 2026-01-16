@@ -1,7 +1,9 @@
-use std::{borrow::Cow, ops::Deref};
+use std::borrow::Cow;
 
 pub use ron::{from_str as deserialize, to_string as serialize};
 use serde::{Deserialize, Serialize};
+
+pub use myu_core::Sq;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EngineMsg {
@@ -34,50 +36,6 @@ pub enum UserMsg {
     Play(Vec<Sq>),
     Go(Vec<Limit>),
     Stop,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "&str", into = "String")]
-pub struct Sq(myu_core::Sq);
-
-impl Sq {
-    pub fn from_raw(raw: u8) -> Option<Self> {
-        myu_core::Sq::from_raw(raw).map(Self)
-    }
-}
-
-impl Deref for Sq {
-    type Target = myu_core::Sq;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<myu_core::Sq> for Sq {
-    fn from(sq: myu_core::Sq) -> Self {
-        Self(sq)
-    }
-}
-
-impl From<Sq> for myu_core::Sq {
-    fn from(value: Sq) -> Self {
-        value.0
-    }
-}
-
-impl TryFrom<&str> for Sq {
-    type Error = myu_core::ParseSqError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        myu_core::parse_sq(value).map(Self)
-    }
-}
-
-impl From<Sq> for String {
-    fn from(value: Sq) -> Self {
-        myu_core::format_sq(value.0)
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

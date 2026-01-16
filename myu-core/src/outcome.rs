@@ -2,6 +2,7 @@ use crate::Color;
 
 /// Game outcome (terminal state).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Outcome {
     /// Igo: 4 yugos in a line.
     Igo(Color),
@@ -11,6 +12,7 @@ pub enum Outcome {
 
 /// Result of a Wego (endgame by no legal moves).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum WegoResult {
     Win(Color),
     Draw,

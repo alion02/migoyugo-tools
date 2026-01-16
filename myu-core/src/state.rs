@@ -2,6 +2,7 @@ use crate::{Color, Mv, Outcome, ParseStateError, Piece, PieceKind, PlayError, Sq
 
 /// Complete board state.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct State {
     white_migos: u64,
     black_migos: u64,
