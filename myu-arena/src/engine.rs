@@ -34,7 +34,6 @@ pub enum LogReason {
     Timeout,
     Crash,
     ProtocolError,
-    InfiniteLoop,
 }
 
 impl LogReason {
@@ -45,7 +44,6 @@ impl LogReason {
             Self::Timeout => "timeout",
             Self::Crash => "crash",
             Self::ProtocolError => "protocol_error",
-            Self::InfiniteLoop => "infinite_loop",
         }
     }
 }

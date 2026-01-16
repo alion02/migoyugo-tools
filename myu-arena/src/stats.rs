@@ -37,11 +37,9 @@ pub struct MatchStats {
     pub dev_crashes: u64,
     pub dev_timeouts: u64,
     pub dev_illegal_moves: u64,
-    pub dev_infinite_loops: u64,
     pub base_crashes: u64,
     pub base_timeouts: u64,
     pub base_illegal_moves: u64,
-    pub base_infinite_loops: u64,
 }
 
 impl MatchStats {
@@ -74,9 +72,6 @@ impl MatchStats {
                     }
                     TerminationKind::IllegalMove | TerminationKind::ProtocolError | TerminationKind::NoMove => {
                         inc(&mut self.dev_illegal_moves, &mut self.base_illegal_moves);
-                    }
-                    TerminationKind::InfiniteLoop => {
-                        inc(&mut self.dev_infinite_loops, &mut self.base_infinite_loops);
                     }
                     TerminationKind::Stopped => {
                         // Not a fault, don't record

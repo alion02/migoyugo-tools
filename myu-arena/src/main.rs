@@ -238,11 +238,11 @@ fn print_final_results(stats: &MatchStats, sprt: &SprtState, pairs: usize, elaps
     println!();
     println!("=== Error Summary ===");
     println!(
-        "Dev:  {} crashes, {} timeouts, {} illegal, {} loops",
-        stats.dev_crashes, stats.dev_timeouts, stats.dev_illegal_moves, stats.dev_infinite_loops
+        "Dev:  {} crashes, {} timeouts, {} illegal",
+        stats.dev_crashes, stats.dev_timeouts, stats.dev_illegal_moves
     );
     println!(
-        "Base: {} crashes, {} timeouts, {} illegal, {} loops",
-        stats.base_crashes, stats.base_timeouts, stats.base_illegal_moves, stats.base_infinite_loops
+        "Base: {} crashes, {} timeouts, {} illegal",
+        stats.base_crashes, stats.base_timeouts, stats.base_illegal_moves
     );
 }

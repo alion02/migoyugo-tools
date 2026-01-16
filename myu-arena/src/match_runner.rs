@@ -89,7 +89,6 @@ pub enum TerminationKind {
     Crash,
     Timeout,
     IllegalMove,
-    InfiniteLoop,
     ProtocolError,
     NoMove,
     SyncFailed,
@@ -494,8 +493,6 @@ fn spawn_error_result(config: &GameConfig, dev: &mut ManagedEngine, base: &mut M
 // Game Loop (color-only, no dev/base knowledge)
 // =============================================================================
 
-const MAX_MOVES: usize = 500;
-
 fn run_game_loop(
     mut game: Game,
     white: &mut Engine,
@@ -503,7 +500,7 @@ fn run_game_loop(
     time_ms: u64,
     stop_flag: &Arc<AtomicBool>,
 ) -> RawGameResult {
-    for _move_count in 0..MAX_MOVES {
+    loop {
         if stop_flag.load(Ordering::SeqCst) {
             return RawGameResult::stopped(game);
         }
@@ -562,12 +559,6 @@ fn run_game_loop(
             MoveResult::EngineError(_) => continue,
         }
     }
-
-    // Exceeded max moves
-    let side_to_move = game.current_state().side_to_move();
-    let engine = if side_to_move == Color::White { &mut *white } else { &mut *black };
-    engine.write_log(LogReason::InfiniteLoop);
-    RawGameResult::error(game, side_to_move, TerminationKind::InfiniteLoop, "Infinite loop detected".into())
 }
 
 // =============================================================================
