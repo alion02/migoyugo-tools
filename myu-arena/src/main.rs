@@ -177,13 +177,14 @@ fn print_progress(
     let games_per_sec = if elapsed > 0.0 { (completed_pairs * 2) as f64 / elapsed } else { 0.0 };
 
     println!(
-        "Pair {:>4}: {:5} | Dev +{}-{}={} ({:.1}%) | Elo: {:+.1} | LLR={:.3} [{:.3},{:.3}] | {:.1} g/s",
+        "Pair {:>4}: {:5} | Dev +{}-{}={} ({:.1}%) | {:?} | Elo: {:+.1} | LLR={:.3} [{:.3},{:.3}] | {:.1} g/s",
         completed_pairs,
         pair_result.outcome,
         stats.dev_wins,
         stats.dev_losses,
         stats.draws,
         stats.dev_score_pct(),
+        *stats.pentanomial,
         sprt.elo_estimate(&stats.pentanomial),
         sprt.llr(),
         sprt.lower_bound(),
