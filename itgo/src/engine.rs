@@ -8,12 +8,12 @@ use std::{
 };
 
 use multiptr::MultiMut;
-use myu_protocol::{EngineMsg, Eval, Limit, Sq};
+use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg};
 
 use crate::{
     search::{ExitSearch, search},
-    send,
-    state::{Frame, Global, Thread},
+    send, send_error,
+    state::{Frame, Global, MakeResult, Thread, apply, make},
 };
 
 #[derive(Debug, Clone)]
@@ -39,47 +39,89 @@ impl Default for Position {
     }
 }
 
-pub struct Search {
-    pub position: Position,
-    pub global: Arc<Global>,
+pub enum Cmd {
+    Msg(UserMsg),
+    Start(Arc<Global>),
 }
 
-pub fn start() -> SyncSender<Search> {
+pub fn start() -> SyncSender<Cmd> {
     let (tx, rx) = sync_channel(0);
     spawn(move || {
-        for Search { mut position, global } in rx {
-            let f = position.frame_ptr();
-            let mut node_limit = !0;
-            let mut depth_limit = !0;
-            for &limit in &global.limits {
-                match limit {
-                    Limit::Depth(depth) => depth_limit = depth_limit.min(depth),
-                    Limit::Nodes(nodes) => node_limit = node_limit.min(nodes),
-                    Limit::Ms(_) => {}
-                }
-            }
-            let thread = &mut Thread::new(node_limit);
-            let mut best = None;
-            for depth in 1..=depth_limit {
-                let result = catch_unwind(AssertUnwindSafe(|| search(&global, thread, f, depth, -i32::MAX, i32::MAX)));
-                match result {
-                    Ok((eval, mv)) => {
-                        best = Sq::from_raw(mv);
-                        let eval = Eval::Score(eval); // TODO: convert properly
-                        let nodes = thread.nodes;
-                        let time = global.elapsed();
-                        let knps = if time == 0 { nodes } else { nodes / time };
-                        send(&EngineMsg::Info { pv: vec![best.unwrap()], eval, depth, nodes, time, knps });
-                    }
-                    Err(e) => {
-                        if e.downcast_ref::<ExitSearch>().is_none() {
-                            panic_any(e);
+        let mut position = Position::default();
+        for cmd in rx {
+            match cmd {
+                Cmd::Msg(msg) => match msg {
+                    UserMsg::Reset => position = Position::default(),
+                    UserMsg::Sync => { /* rendezvous with main thread */ }
+                    UserMsg::Undo(count) => 'b: {
+                        let Some(new_index) = position.index.checked_sub(count).filter(|index| index >= &1) else {
+                            send_error("Too many undos");
+                            break 'b;
+                        };
+                        if count > 0 {
+                            position.unplayable = false;
                         }
-                        break;
+                        position.index = new_index;
                     }
+                    UserMsg::Play(mvs) => 'b: {
+                        for mv in mvs {
+                            if position.unplayable {
+                                send_error("Cannot play on this game state");
+                                break 'b;
+                            }
+                            let f = position.frame_ptr();
+                            // TODO: is_legal, is_terminal
+                            match make(f, mv.raw()) {
+                                MakeResult::Ok(data) => apply(f.offset(1), data),
+                                MakeResult::Illegal => todo!(),
+                                MakeResult::Igo => position.unplayable = true,
+                            }
+                            position.index += 1;
+                        }
+                    }
+                    UserMsg::Go(_) | UserMsg::Stop => unreachable!(),
+                },
+                Cmd::Start(global) => 'b: {
+                    if position.unplayable {
+                        send_error("Cannot search this game state");
+                        send(&EngineMsg::Best(None));
+                        break 'b;
+                    }
+                    let f = position.frame_ptr();
+                    let mut node_limit = !0;
+                    let mut depth_limit = !0;
+                    for &limit in &global.limits {
+                        match limit {
+                            Limit::Depth(depth) => depth_limit = depth_limit.min(depth),
+                            Limit::Nodes(nodes) => node_limit = node_limit.min(nodes),
+                            Limit::Ms(_) => {}
+                        }
+                    }
+                    let thread = &mut Thread::new(node_limit);
+                    let mut best = None;
+                    for depth in 1..=depth_limit {
+                        let result =
+                            catch_unwind(AssertUnwindSafe(|| search(&global, thread, f, depth, -i32::MAX, i32::MAX)));
+                        match result {
+                            Ok((eval, mv)) => {
+                                best = Sq::from_raw(mv);
+                                let eval = Eval::Score(eval); // TODO: convert properly
+                                let nodes = thread.nodes;
+                                let time = global.elapsed();
+                                let knps = if time == 0 { nodes } else { nodes / time };
+                                send(&EngineMsg::Info { pv: vec![best.unwrap()], eval, depth, nodes, time, knps });
+                            }
+                            Err(e) => {
+                                if e.downcast_ref::<ExitSearch>().is_none() {
+                                    panic_any(e);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    send(&EngineMsg::Best(best));
                 }
             }
-            send(&EngineMsg::Best(best));
         }
     });
     tx

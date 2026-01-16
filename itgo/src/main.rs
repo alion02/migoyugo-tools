@@ -13,10 +13,7 @@ use std::{
 
 use myu_protocol::{EngineMsg, UserMsg, deserialize, serialize};
 
-use crate::{
-    engine::{Position, Search},
-    state::{Global, MakeResult, apply, make},
-};
+use crate::{engine::Cmd, state::Global};
 
 pub mod engine;
 pub mod search;
@@ -33,55 +30,33 @@ fn main() {
         }
     });
     let Ok(mut msg) = line_rx.recv() else { return };
-    let search_tx = engine::start();
-    let mut position = Position::default();
+    let cmd_tx = engine::start();
     let mut global: Option<Arc<Global>> = None;
     loop {
         let stop = || {
-            if let Some(global) = &global {
-                global.stop.store(true, atomic::Ordering::Relaxed);
-            }
+            let Some(global) = &global else { return };
+            global.stop.store(true, atomic::Ordering::Relaxed);
         };
+        let forward = |msg| cmd_tx.send(Cmd::Msg(msg)).unwrap();
         match deserialize(&msg) {
             Ok(msg) => match msg {
-                UserMsg::Reset => position = Position::default(),
-                UserMsg::Sync => send(&EngineMsg::Ready),
-                UserMsg::Undo(count) => 'b: {
-                    let Some(new_index) = position.index.checked_sub(count).filter(|index| index >= &1) else {
-                        send_error("Too many undos");
-                        break 'b;
-                    };
-                    if count > 0 {
-                        position.unplayable = false;
-                    }
-                    position.index = new_index;
+                UserMsg::Reset | UserMsg::Undo(_) | UserMsg::Play(_) => {
+                    stop();
+                    forward(msg);
                 }
-                UserMsg::Play(mvs) => 'b: {
-                    for mv in mvs {
-                        if position.unplayable {
-                            send_error("Cannot play on this game state");
-                            break 'b;
-                        }
-                        let f = position.frame_ptr();
-                        // TODO: is_legal, is_terminal
-                        match make(f, mv.raw()) {
-                            MakeResult::Ok(data) => apply(f.offset(1), data),
-                            MakeResult::Illegal => todo!(),
-                            MakeResult::Igo => position.unplayable = true,
-                        }
-                        position.index += 1;
+                UserMsg::Sync => {
+                    if global.as_ref().is_none_or(|global| global.stop.load(atomic::Ordering::Relaxed)) {
+                        // engine thread is not searching or stopping search right now, but it might be doing other things
+                        // rendezvous with it (0 capacity channel enforces synchronous handshake behavior)
+                        forward(msg);
                     }
+                    send(&EngineMsg::Ready);
                 }
-                UserMsg::Go(limits) => 'b: {
-                    if position.unplayable {
-                        send(&EngineMsg::Best(None));
-                        send_error("Cannot search this game state");
-                        break 'b;
-                    }
+                UserMsg::Go(limits) => {
                     let new_global = Arc::new(Global { started_at: Instant::now(), stop: false.into(), limits });
                     stop();
                     global = Some(new_global.clone());
-                    search_tx.send(Search { position: position.clone(), global: new_global }).unwrap();
+                    cmd_tx.send(Cmd::Start(new_global)).unwrap();
                 }
                 UserMsg::Stop => stop(),
             },
