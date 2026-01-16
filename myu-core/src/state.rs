@@ -141,7 +141,7 @@ impl State {
         }
 
         // Check for completed lines of 4
-        let mut lines = [[Sq::A1; 4]; 4];
+        let mut lines = [[Sq::from_raw(0).unwrap(); 4]; 4];
         let yugos_formed = new_state.find_completed_lines(mv.sq, color, &mut lines);
 
         if yugos_formed > 0 {
@@ -168,15 +168,14 @@ impl State {
             to_remove &= !new_state.white_yugos;
             to_remove &= !new_state.black_yugos;
 
-            let yugos_formed_u8 = yugos_formed as u8;
             match color {
                 Color::White => {
                     new_state.white_migos &= !to_remove;
-                    new_state.white_score += yugos_formed_u8;
+                    new_state.white_score += yugos_formed as u8;
                 }
                 Color::Black => {
                     new_state.black_migos &= !to_remove;
-                    new_state.black_score += yugos_formed_u8;
+                    new_state.black_score += yugos_formed as u8;
                 }
             }
         }
