@@ -29,7 +29,6 @@ pub enum LogDirection {
 /// Reason for writing a log file
 #[derive(Debug, Clone, Copy)]
 pub enum LogReason {
-    SyncFailed,
     IllegalMove,
     NoMove,
     Timeout,
@@ -41,7 +40,6 @@ pub enum LogReason {
 impl LogReason {
     fn as_str(self) -> &'static str {
         match self {
-            Self::SyncFailed => "sync_failed",
             Self::IllegalMove => "illegal_move",
             Self::NoMove => "no_move",
             Self::Timeout => "timeout",
@@ -236,19 +234,36 @@ impl Engine {
     /// Send Sync command and wait for Ready
     pub fn sync(&mut self) -> Result<(), String> {
         self.send_message(&UserMsg::Sync)?;
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_millis(self.timeout_ms) {
-            match self.recv_message_timeout(Duration::from_millis(100))? {
+        self.wait_for_ready()
+    }
+
+    /// Reset the engine for a new game
+    pub fn reset(&mut self) -> Result<(), String> {
+        self.send_message(&UserMsg::Reset)?;
+        self.send_message(&UserMsg::Sync)?;
+        self.wait_for_ready()?;
+        // Clear the log for the new game
+        self.log.clear();
+        self.start_time = Instant::now();
+        Ok(())
+    }
+
+    fn wait_for_ready(&mut self) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_millis(self.timeout_ms);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(format!("Engine {} did not respond to Sync", self.name));
+            }
+            match self.recv_message_timeout(remaining)? {
                 Some(EngineMsg::Ready) => return Ok(()),
                 Some(EngineMsg::Error(e)) => {
                     eprintln!("[{}] Engine error: {}", self.name, e);
                     // Continue waiting for Ready
                 }
-                Some(_) => {}
-                None => {}
+                Some(_) | None => {}
             }
         }
-        Err(format!("Engine {} did not respond to Sync", self.name))
     }
 
     /// Send Play command

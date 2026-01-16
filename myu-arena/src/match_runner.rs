@@ -2,7 +2,7 @@
 
 use std::{
     fmt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -17,6 +17,10 @@ use crate::{
     engine::{Engine, LogReason, MoveResult},
     opening_book::OpeningBook,
 };
+
+// =============================================================================
+// Public Types
+// =============================================================================
 
 /// Game score from one player's perspective
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +132,138 @@ pub struct GameConfig {
     pub logs_dir: Option<PathBuf>,
 }
 
+// =============================================================================
+// Engine Role & Managed Engine
+// =============================================================================
+
+/// Identifies which engine role (for spawning and error reporting)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineRole {
+    Dev,
+    Base,
+}
+
+impl EngineRole {
+    fn path(self, config: &GameConfig) -> &Path {
+        match self {
+            EngineRole::Dev => &config.dev_path,
+            EngineRole::Base => &config.base_path,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            EngineRole::Dev => "dev",
+            EngineRole::Base => "base",
+        }
+    }
+
+    fn as_faulty(self) -> FaultyEngine {
+        match self {
+            EngineRole::Dev => FaultyEngine::Dev,
+            EngineRole::Base => FaultyEngine::Base,
+        }
+    }
+}
+
+/// A managed engine that tracks health and handles spawn/reset
+struct ManagedEngine {
+    engine: Option<Engine>,
+    role: EngineRole,
+}
+
+impl ManagedEngine {
+    fn new(role: EngineRole) -> Self {
+        Self { engine: None, role }
+    }
+
+    /// Ensure the engine is ready to play. Spawns if needed.
+    fn ensure_ready(&mut self, config: &GameConfig) -> Result<&mut Engine, String> {
+        if self.engine.is_none() {
+            let mut engine = Engine::spawn(
+                self.role.name(),
+                self.role.path(config),
+                config.time_ms,
+                config.timeout_leniency,
+                config.logs_dir.clone(),
+            )?;
+            engine.sync()?;
+            self.engine = Some(engine);
+        }
+        Ok(self.engine.as_mut().unwrap())
+    }
+
+    /// Reset the engine for a new game. Marks as needing respawn on failure.
+    fn reset(&mut self) {
+        if let Some(ref mut engine) = self.engine
+            && engine.reset().is_err()
+        {
+            self.engine = None;
+        }
+    }
+
+    /// Mark the engine as needing respawn
+    fn mark_failed(&mut self) {
+        self.engine = None;
+    }
+
+    /// Check if the engine needs respawn
+    fn needs_respawn(&self) -> bool {
+        self.engine.is_none()
+    }
+}
+
+// =============================================================================
+// Raw Game Result (color-neutral)
+// =============================================================================
+
+/// Color-neutral termination (which color's engine failed)
+struct RawTermination {
+    kind: TerminationKind,
+    details: String,
+    faulty_color: Color,
+}
+
+/// Color-neutral game result (score is from white's perspective)
+struct RawGameResult {
+    game: Game,
+    white_score: Score,
+    termination: Option<RawTermination>,
+}
+
+impl RawGameResult {
+    fn normal(game: Game, outcome: &Outcome) -> Self {
+        let white_score = match outcome.winner() {
+            Some(Color::White) => Score::Win,
+            Some(Color::Black) => Score::Loss,
+            None => Score::Draw,
+        };
+        Self { game, white_score, termination: None }
+    }
+
+    fn error(game: Game, faulty_color: Color, kind: TerminationKind, details: String) -> Self {
+        // The faulty engine loses
+        let white_score = if faulty_color == Color::White { Score::Loss } else { Score::Win };
+        Self { game, white_score, termination: Some(RawTermination { kind, details, faulty_color }) }
+    }
+
+    fn stopped(game: Game) -> Self {
+        Self {
+            game,
+            white_score: Score::Draw,
+            termination: Some(RawTermination {
+                kind: TerminationKind::Stopped,
+                details: "Match stopped".into(),
+                faulty_color: Color::White, // Arbitrary, won't be used
+            }),
+        }
+    }
+}
+
+// =============================================================================
+// Match Runner
+// =============================================================================
+
 /// Match runner that manages concurrent game pairs
 pub struct MatchRunner {
     config: Arc<GameConfig>,
@@ -170,12 +306,17 @@ impl MatchRunner {
             let stop_flag = self.stop_flag.clone();
 
             thread::spawn(move || {
+                let mut dev = ManagedEngine::new(EngineRole::Dev);
+                let mut base = ManagedEngine::new(EngineRole::Base);
+
                 while !stop_flag.load(Ordering::SeqCst) {
                     let opening = match task_rx.lock().unwrap().recv() {
                         Ok(o) => o,
                         Err(_) => break,
                     };
-                    let result = play_game_pair(&config, &opening, &stop_flag);
+
+                    let result = play_game_pair(&config, &mut dev, &mut base, &opening, &stop_flag);
+
                     if result_tx.send(result).is_err() {
                         break;
                     }
@@ -220,55 +361,76 @@ impl Iterator for GamePairIterator {
     }
 }
 
-/// Play a single game pair (dev as White, then dev as Black)
-fn play_game_pair(config: &GameConfig, opening: &[Mv], stop_flag: &Arc<AtomicBool>) -> GamePairResult {
-    let game1 = play_single_game(config, opening, true, stop_flag);
-    let game2 = play_single_game(config, opening, false, stop_flag);
+// =============================================================================
+// Game Pair Execution
+// =============================================================================
+
+fn play_game_pair(
+    config: &GameConfig,
+    dev: &mut ManagedEngine,
+    base: &mut ManagedEngine,
+    opening: &[Mv],
+    stop_flag: &Arc<AtomicBool>,
+) -> GamePairResult {
+    // Game 1: dev = white, base = black
+    let game1 = play_single_game(config, dev, base, opening, true, stop_flag);
+
+    // Reset for game 2
+    dev.reset();
+    base.reset();
+
+    // Game 2: dev = black, base = white
+    let game2 = if dev.needs_respawn() || base.needs_respawn() {
+        // Reset failed, create error result
+        spawn_error_result(config, dev, base)
+    } else {
+        play_single_game(config, dev, base, opening, false, stop_flag)
+    };
+
+    // Reset for next pair
+    dev.reset();
+    base.reset();
+
     let outcome = Pentanomial::from_scores(game1.dev_score, game2.dev_score);
     GamePairResult { game1, game2, outcome }
 }
 
-/// Play a single game
 fn play_single_game(
     config: &GameConfig,
+    dev: &mut ManagedEngine,
+    base: &mut ManagedEngine,
     opening: &[Mv],
     dev_is_white: bool,
     stop_flag: &Arc<AtomicBool>,
 ) -> GameResult {
-    let (dev_path, base_path) = (&config.dev_path, &config.base_path);
-    let (white_path, black_path) = if dev_is_white { (dev_path, base_path) } else { (base_path, dev_path) };
-
-    // Spawn engines
-    let spawn = |name, path: &PathBuf, is_white| {
-        Engine::spawn(name, path, config.time_ms, config.timeout_leniency, config.logs_dir.clone())
-            .map_err(|e| error_result(Game::new(), dev_is_white, is_white, TerminationKind::SpawnFailed, e))
+    // Ensure engines are ready
+    let (white, black, white_role, black_role) = if dev_is_white {
+        match (dev.ensure_ready(config), base.ensure_ready(config)) {
+            (Ok(d), Ok(b)) => (d, b, EngineRole::Dev, EngineRole::Base),
+            (Err(e), _) => {
+                dev.mark_failed();
+                return spawn_error(EngineRole::Dev, e);
+            }
+            (_, Err(e)) => {
+                base.mark_failed();
+                return spawn_error(EngineRole::Base, e);
+            }
+        }
+    } else {
+        match (base.ensure_ready(config), dev.ensure_ready(config)) {
+            (Ok(b), Ok(d)) => (b, d, EngineRole::Base, EngineRole::Dev),
+            (Err(e), _) => {
+                base.mark_failed();
+                return spawn_error(EngineRole::Base, e);
+            }
+            (_, Err(e)) => {
+                dev.mark_failed();
+                return spawn_error(EngineRole::Dev, e);
+            }
+        }
     };
 
-    let mut white = match spawn("white", white_path, true) {
-        Ok(e) => e,
-        Err(r) => return r,
-    };
-    let mut black = match spawn("black", black_path, false) {
-        Ok(e) => e,
-        Err(r) => return r,
-    };
-
-    // Sync engines
-    let sync = |engine: &mut Engine, is_white| {
-        engine.sync().map_err(|e| {
-            engine.write_log(LogReason::SyncFailed);
-            error_result(Game::new(), dev_is_white, is_white, TerminationKind::SyncFailed, e)
-        })
-    };
-
-    if let Err(r) = sync(&mut white, true) {
-        return r;
-    }
-    if let Err(r) = sync(&mut black, false) {
-        return r;
-    }
-
-    // Initialize game and play opening
+    // Send opening moves to engines
     let mut game = Game::new();
     let opening_sqs: Vec<_> = opening.iter().map(|mv| mv.sq.into()).collect();
 
@@ -282,44 +444,81 @@ fn play_single_game(
         }
     }
 
-    // Main game loop
-    run_game_loop(game, white, black, config.time_ms, dev_is_white, stop_flag)
+    // Play the game
+    let raw = run_game_loop(game, white, black, config.time_ms, stop_flag);
+
+    // Interpret result
+    interpret_result(raw, dev_is_white, white_role, black_role, dev, base)
 }
+
+fn spawn_error(failed_role: EngineRole, error: String) -> GameResult {
+    let dev_failed = failed_role == EngineRole::Dev;
+    GameResult {
+        game: Game::new(),
+        dev_score: if dev_failed { Score::Loss } else { Score::Win },
+        termination: Some(Termination {
+            kind: TerminationKind::SpawnFailed,
+            details: error,
+            faulty_engine: Some(failed_role.as_faulty()),
+        }),
+    }
+}
+
+fn spawn_error_result(config: &GameConfig, dev: &mut ManagedEngine, base: &mut ManagedEngine) -> GameResult {
+    // Try to figure out which one failed
+    let dev_failed = dev.needs_respawn();
+    let base_failed = base.needs_respawn();
+
+    // Try to respawn for subsequent games
+    let _ = dev.ensure_ready(config);
+    let _ = base.ensure_ready(config);
+
+    let (faulty, dev_score) = match (dev_failed, base_failed) {
+        (true, false) => (Some(FaultyEngine::Dev), Score::Loss),
+        (false, true) => (Some(FaultyEngine::Base), Score::Win),
+        _ => (None, Score::Draw), // Both failed or neither (shouldn't happen)
+    };
+
+    GameResult {
+        game: Game::new(),
+        dev_score,
+        termination: Some(Termination {
+            kind: TerminationKind::SyncFailed,
+            details: "Reset failed between games".into(),
+            faulty_engine: faulty,
+        }),
+    }
+}
+
+// =============================================================================
+// Game Loop (color-only, no dev/base knowledge)
+// =============================================================================
 
 const MAX_MOVES: usize = 500;
 
 fn run_game_loop(
     mut game: Game,
-    mut white: Engine,
-    mut black: Engine,
+    white: &mut Engine,
+    black: &mut Engine,
     time_ms: u64,
-    dev_is_white: bool,
     stop_flag: &Arc<AtomicBool>,
-) -> GameResult {
+) -> RawGameResult {
     for _move_count in 0..MAX_MOVES {
         if stop_flag.load(Ordering::SeqCst) {
-            return GameResult {
-                game,
-                dev_score: Score::Draw,
-                termination: Some(Termination {
-                    kind: TerminationKind::Stopped,
-                    details: "Match stopped".into(),
-                    faulty_engine: None,
-                }),
-            };
+            return RawGameResult::stopped(game);
         }
 
         if let Some(outcome) = game.outcome() {
-            return GameResult { game, dev_score: outcome_to_score(&outcome, dev_is_white), termination: None };
+            return RawGameResult::normal(game, &outcome);
         }
 
-        let is_white_turn = game.current_state().side_to_move() == Color::White;
-        let (current, opponent) = if is_white_turn { (&mut white, &mut black) } else { (&mut black, &mut white) };
+        let side_to_move = game.current_state().side_to_move();
+        let (current, opponent) =
+            if side_to_move == Color::White { (&mut *white, &mut *black) } else { (&mut *black, &mut *white) };
 
         match current.go(time_ms) {
             MoveResult::Move(sq) => {
                 let mv = Mv::new(sq.into());
-
                 match game.play(mv) {
                     Ok(()) => {
                         let _ = current.play(vec![sq]);
@@ -327,10 +526,9 @@ fn run_game_loop(
                     }
                     Err(e) => {
                         current.write_log(LogReason::IllegalMove);
-                        return error_result(
+                        return RawGameResult::error(
                             game,
-                            dev_is_white,
-                            is_white_turn,
+                            side_to_move,
                             TerminationKind::IllegalMove,
                             format!("Illegal move: {e}"),
                         );
@@ -339,32 +537,24 @@ fn run_game_loop(
             }
             MoveResult::NoMove => {
                 current.write_log(LogReason::NoMove);
-                return error_result(
+                return RawGameResult::error(
                     game,
-                    dev_is_white,
-                    is_white_turn,
+                    side_to_move,
                     TerminationKind::NoMove,
                     "Engine returned no move".into(),
                 );
             }
             MoveResult::Timeout => {
-                return error_result(game, dev_is_white, is_white_turn, TerminationKind::Timeout, "Timeout".into());
+                return RawGameResult::error(game, side_to_move, TerminationKind::Timeout, "Timeout".into());
             }
             MoveResult::Crash => {
-                return error_result(
-                    game,
-                    dev_is_white,
-                    is_white_turn,
-                    TerminationKind::Crash,
-                    "Engine crashed".into(),
-                );
+                return RawGameResult::error(game, side_to_move, TerminationKind::Crash, "Engine crashed".into());
             }
             MoveResult::ProtocolError(msg) => {
                 current.write_log(LogReason::ProtocolError);
-                return error_result(
+                return RawGameResult::error(
                     game,
-                    dev_is_white,
-                    is_white_turn,
+                    side_to_move,
                     TerminationKind::ProtocolError,
                     format!("Protocol error: {msg}"),
                 );
@@ -374,40 +564,53 @@ fn run_game_loop(
     }
 
     // Exceeded max moves
-    let is_white_turn = game.current_state().side_to_move() == Color::White;
-    let engine = if is_white_turn { &mut white } else { &mut black };
+    let side_to_move = game.current_state().side_to_move();
+    let engine = if side_to_move == Color::White { &mut *white } else { &mut *black };
     engine.write_log(LogReason::InfiniteLoop);
-    error_result(game, dev_is_white, is_white_turn, TerminationKind::InfiniteLoop, "Infinite loop detected".into())
+    RawGameResult::error(game, side_to_move, TerminationKind::InfiniteLoop, "Infinite loop detected".into())
 }
 
-fn error_result(
-    game: Game,
+// =============================================================================
+// Result Interpretation
+// =============================================================================
+
+fn interpret_result(
+    raw: RawGameResult,
     dev_is_white: bool,
-    white_failed: bool,
-    kind: TerminationKind,
-    details: String,
+    white_role: EngineRole,
+    black_role: EngineRole,
+    dev: &mut ManagedEngine,
+    base: &mut ManagedEngine,
 ) -> GameResult {
-    let dev_failed = dev_is_white == white_failed;
-    GameResult {
-        game,
-        dev_score: if dev_failed { Score::Loss } else { Score::Win },
-        termination: Some(Termination {
-            kind,
-            details,
-            faulty_engine: Some(if dev_failed { FaultyEngine::Dev } else { FaultyEngine::Base }),
-        }),
-    }
-}
+    // Convert white_score to dev_score
+    let dev_score = if dev_is_white {
+        raw.white_score
+    } else {
+        match raw.white_score {
+            Score::Win => Score::Loss,
+            Score::Draw => Score::Draw,
+            Score::Loss => Score::Win,
+        }
+    };
 
-fn outcome_to_score(outcome: &Outcome, dev_is_white: bool) -> Score {
-    match outcome.winner() {
-        Some(winner) => {
-            if (winner == Color::White) == dev_is_white {
-                Score::Win
-            } else {
-                Score::Loss
+    // Convert termination
+    let termination = raw.termination.map(|t| {
+        let faulty_role = if t.faulty_color == Color::White { white_role } else { black_role };
+
+        // Mark the faulty engine for respawn if it's a severe error
+        if matches!(t.kind, TerminationKind::Crash | TerminationKind::ProtocolError | TerminationKind::SyncFailed) {
+            match faulty_role {
+                EngineRole::Dev => dev.mark_failed(),
+                EngineRole::Base => base.mark_failed(),
             }
         }
-        None => Score::Draw,
-    }
+
+        Termination {
+            kind: t.kind,
+            details: t.details,
+            faulty_engine: if t.kind == TerminationKind::Stopped { None } else { Some(faulty_role.as_faulty()) },
+        }
+    });
+
+    GameResult { game: raw.game, dev_score, termination }
 }
