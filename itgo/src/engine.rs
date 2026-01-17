@@ -1,5 +1,5 @@
 use std::{
-    panic::{AssertUnwindSafe, catch_unwind, panic_any},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{
         Arc,
         mpsc::{SyncSender, sync_channel},
@@ -113,7 +113,8 @@ pub fn start() -> SyncSender<Cmd> {
                             }
                             Err(e) => {
                                 if e.downcast_ref::<ExitSearch>().is_none() {
-                                    panic_any(e);
+                                    send_error("Search panicked - this is a bug");
+                                    resume_unwind(e);
                                 }
                                 break;
                             }
