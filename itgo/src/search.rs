@@ -31,6 +31,15 @@ pub fn search(
     }
     thread.nodes += 1;
     let GenMvResult::Ok(GenMvData { playable, makes_yugo }) = gen_mv(f);
+    let mut mask = makes_yugo;
+    while mask != 0 {
+        let mv = mask.trailing_zeros() as u8;
+        match make(f, mv) {
+            MakeResult::Ok(_) => (),
+            MakeResult::Igo => return (MAX_VALUE - (f.ply + 1), mv), // terminal state is technically the *next* ply
+        }
+        mask &= mask - 1;
+    }
     if playable == 0 {
         // Wego: no legal moves
         let best_value = match f.score.cmp(&0) {
@@ -97,12 +106,7 @@ pub fn search(
                         }
                     }
                 }
-                MakeResult::Igo => {
-                    // terminal state is technically the *next* ply
-                    best_value = MAX_VALUE - (f.ply + 1);
-                    best_mv = mv;
-                    break 'moves;
-                }
+                MakeResult::Igo => unreachable!(),
             }
             open &= open - 1;
         }
