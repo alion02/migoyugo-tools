@@ -74,27 +74,23 @@ pub fn search(
             };
             let value = if depth == 0 {
                 struct EvalData {
-                    migos: i32,
-                    yugos: i32,
                     coherence: i32,
                 }
 
                 #[inline]
                 fn side_eval(migo: u64, yugo: u64) -> EvalData {
-                    let migos = migo.count_ones() as i32;
-                    let yugos = yugo.count_ones() as i32;
                     let pieces = migo | yugo;
                     let simd_pieces = Simd::splat(pieces);
                     let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
                     let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
                     let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
                         + coherence_masks_far.count_ones().reduce_sum() as i32;
-                    EvalData { migos, yugos, coherence }
+                    EvalData { coherence }
                 }
 
                 let my = side_eval(new.migo, new.yugo);
                 let opp = side_eval(f.opp_migo, f.opp_yugo);
-                new.score * 16 + (my.migos - opp.migos) + (my.yugos - opp.yugos) * 64 + (my.coherence - opp.coherence)
+                new.score * 16 + new.psqt_value + (my.coherence - opp.coherence)
             } else {
                 let f = f.offset(1);
                 apply(f, new);

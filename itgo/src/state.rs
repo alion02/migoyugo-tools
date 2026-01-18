@@ -15,6 +15,7 @@ pub static DIRS: [u64x4; 8] = {
     }
     unsafe { transmute(simd_dirs) }
 };
+
 pub static SHR_MASK: [u64x4; 8] = {
     let mut simd_masks = [[!0u64; 4]; 8];
     simd_masks[1] = [0x7F7F7F7F7F7F7F7F, 0x007F7F7F7F7F7F7F, 0x00FFFFFFFFFFFFFF, 0x00FEFEFEFEFEFEFE];
@@ -29,6 +30,7 @@ pub static SHR_MASK: [u64x4; 8] = {
     }
     unsafe { transmute(simd_masks) }
 };
+
 pub static SHL_MASK: [u64x4; 8] = {
     let mut simd_masks = [[!0u64; 4]; 8];
     simd_masks[1] = [0xFEFEFEFEFEFEFEFE, 0xFEFEFEFEFEFEFE00, 0xFFFFFFFFFFFFFF00, 0x7F7F7F7F7F7F7F00];
@@ -43,6 +45,34 @@ pub static SHL_MASK: [u64x4; 8] = {
     }
     unsafe { transmute(simd_masks) }
 };
+
+const fn to_symmetrical<T: Copy>(v: [T; 10]) -> [T; 64] {
+    let mut out = [[v[0]; 8]; 8];
+    let mut i = 0;
+    let mut s = 0;
+    while s < 4 {
+        let mut z = s;
+        while z < 4 {
+            let val = v[i];
+            out[s][z] = val;
+            out[s][7 - z] = val;
+            out[7 - s][z] = val;
+            out[7 - s][7 - z] = val;
+            out[z][s] = val;
+            out[z][7 - s] = val;
+            out[7 - z][s] = val;
+            out[7 - z][7 - s] = val;
+            z += 1;
+            i += 1;
+        }
+        s += 1;
+    }
+    unsafe { (&raw const out).cast::<[T; 64]>().read() }
+}
+
+pub static PSQT_MIGO: [i32; 64] = to_symmetrical([-5, -4, -3, -2, 0, 0, 0, 3, 2, -1]);
+
+pub static PSQT_YUGO: [i32; 64] = to_symmetrical([50, 52, 54, 56, 59, 61, 61, 65, 65, 70]);
 
 pub struct Global {
     pub started_at: Instant,
@@ -82,6 +112,7 @@ pub struct Frame {
     pub opp_migo: u64,
     pub opp_yugo: u64,
     pub score: i32,
+    pub psqt_value: i32,
     pub ply: i32,
     pub killers: [u8; 2],
 }
@@ -97,6 +128,7 @@ pub struct MakeData {
     pub migo: u64,
     pub yugo: u64,
     pub score: i32,
+    pub psqt_value: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +143,12 @@ pub struct GenMvData {
 }
 
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
-    MakeData { migo: f[-1].opp_migo | 1 << mv, yugo: f[-1].opp_yugo, score: f.score }
+    MakeData {
+        migo: f[-1].opp_migo | 1 << mv,
+        yugo: f[-1].opp_yugo,
+        score: f.score,
+        psqt_value: f.psqt_value + PSQT_MIGO[mv as usize],
+    }
 }
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
@@ -120,15 +157,16 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     let mut migo = p.opp_migo | bit;
     let mut yugo = p.opp_yugo;
     let mut score = c.score;
+    let mut psqt_value = c.psqt_value;
     let mut masks = Simd::splat(migo | yugo);
     masks &= masks >> DIRS[1];
     masks &= masks >> DIRS[2];
     masks &= SHR_MASK[3];
     let line_4 = masks;
-    'b: {
+    {
         if line_4.reduce_or() == 0 {
             // no 4 line
-            break 'b;
+            return MakeResult::Ok(make_migo(f, mv));
         }
         // at least one 4 line
         masks |= masks << DIRS[1];
@@ -138,16 +176,24 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
             // at least one 4 line of yugos
             return MakeResult::Igo;
         }
-        migo &= !masks.reduce_or();
+        psqt_value += PSQT_YUGO[mv as usize];
+        let all_lines = masks.reduce_or();
+        let mut remove = migo & all_lines;
+        while remove != 0 {
+            psqt_value -= PSQT_MIGO[remove.trailing_zeros() as usize];
+            remove &= remove - 1;
+        }
+        migo &= !all_lines;
         score += unsafe { _mm256_movemask_pd(transmute(line_4.simd_ne(Simd::default()))) }.count_ones() as i32;
     }
-    MakeResult::Ok(MakeData { migo, yugo, score })
+    MakeResult::Ok(MakeData { migo, yugo, score, psqt_value })
 }
 
 pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
     f.score = -make.score;
+    f.psqt_value = -make.psqt_value;
 }
 
 pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {

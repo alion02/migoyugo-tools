@@ -32,7 +32,9 @@ impl Position {
 impl Default for Position {
     fn default() -> Self {
         Self {
-            stack: (-1..416).map(|ply| Frame { opp_migo: 0, opp_yugo: 0, score: 0, ply, killers: [0, 1] }).collect(),
+            stack: (-1..416)
+                .map(|ply| Frame { opp_migo: 0, opp_yugo: 0, score: 0, psqt_value: 0, ply, killers: [0, 1] })
+                .collect(),
             index: 1,
             unplayable: false,
         }
