@@ -73,7 +73,6 @@ pub fn start() -> SyncSender<Cmd> {
                             // TODO: is_legal, is_terminal
                             match make(f, mv.raw()) {
                                 MakeResult::Ok(data) => apply(f.offset(1), data),
-                                MakeResult::Illegal => todo!(),
                                 MakeResult::Igo => position.unplayable = true,
                             }
                             position.index += 1;

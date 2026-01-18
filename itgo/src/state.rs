@@ -88,7 +88,6 @@ pub struct Frame {
 
 pub enum MakeResult {
     Ok(MakeData),
-    Illegal,
     Igo,
 }
 
@@ -121,11 +120,6 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
         if line_4.reduce_or() == 0 {
             // no 4 line
             break 'b;
-        }
-        let line_5 = masks & masks >> DIRS[1];
-        if line_5.reduce_or() != 0 {
-            // has 5+ line
-            return MakeResult::Illegal;
         }
         // no 5+ and at least one 4 line
         masks |= masks << DIRS[1];

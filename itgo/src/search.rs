@@ -85,7 +85,6 @@ pub fn search(
                         }
                     }
                 }
-                MakeResult::Illegal => unreachable!(),
                 MakeResult::Igo => {
                     // terminal state is technically the *next* ply
                     best_value = MAX_VALUE - (f.ply + 1);
