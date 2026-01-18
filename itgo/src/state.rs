@@ -99,10 +99,12 @@ pub struct MakeData {
     pub score: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenMvResult {
     Ok(GenMvData),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenMvData {
     pub playable: u64,
     pub makes_yugo: u64,
@@ -153,16 +155,16 @@ pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {
     let own = Simd::splat(own(f));
     let line_2 = own & own >> DIRS[1];
     let line_3 = line_2 & own << DIRS[1];
-    let pi_a = own << DIRS[1] & line_3 >> DIRS[2] & SHR_MASK[3] & SHL_MASK[1];
-    let pi_b = own >> DIRS[1] & line_3 << DIRS[2] & SHR_MASK[1] & SHL_MASK[3];
-    let two_two = line_2 >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[2] & SHL_MASK[2];
-    let too_long = pi_a | pi_b | two_two;
-    let too_long = too_long.reduce_or();
-    let playable = !occ(f) & !too_long;
     let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
     let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
     let two_one_a = own << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
     let two_one_b = own >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+    let pi_a = ext_three_a & two_one_a;
+    let pi_b = ext_three_b & two_one_b;
+    let two_two = two_one_a & two_one_b;
+    let too_long = pi_a | pi_b | two_two;
+    let too_long = too_long.reduce_or();
+    let playable = !occ(f) & !too_long;
     let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
     let makes_yugo = makes_yugo.reduce_or() & playable;
     GenMvResult::Ok(GenMvData { playable, makes_yugo })
