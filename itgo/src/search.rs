@@ -33,6 +33,15 @@ pub fn search(
     let playable = match gen_mv(f) {
         GenMvResult::Ok(data) => data.playable,
     };
+    if playable == 0 {
+        // Wego: no legal moves
+        let best_value = match f.score.cmp(&0) {
+            Ordering::Greater => MAX_VALUE - f.ply,
+            Ordering::Equal => 0,
+            Ordering::Less => f.ply - MAX_VALUE,
+        };
+        return (best_value, !0);
+    }
     let killer_0 = 1 << f.killers[0];
     let killer_1 = 1 << f.killers[1];
     let mut best_value = -i32::MAX;
@@ -94,14 +103,6 @@ pub fn search(
             }
             open &= open - 1;
         }
-    }
-    if best_mv == !0 {
-        // Wego: no legal moves
-        best_value = match f.score.cmp(&0) {
-            Ordering::Greater => MAX_VALUE - f.ply,
-            Ordering::Equal => 0,
-            Ordering::Less => f.ply - MAX_VALUE,
-        };
     }
     if best_value >= beta {
         if f.killers[0] != best_mv {
