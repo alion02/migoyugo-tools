@@ -6,15 +6,37 @@ use std::{
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-pub const DIRECTIONS: u64x4 = Simd::from_array([1, 9, 8, 7]);
-pub const SHR_MASK: [u64x4; 8] = {
+pub static DIRS: [u64x4; 8] = {
+    let mut simd_dirs = [[0u64; 4]; 8];
+    let mut i = 0;
+    while i < 8 {
+        simd_dirs[i as usize] = [i, i * 9, i * 8, i * 7];
+        i += 1;
+    }
+    unsafe { transmute(simd_dirs) }
+};
+pub static SHR_MASK: [u64x4; 8] = {
     let mut simd_masks = [[!0u64; 4]; 8];
     simd_masks[1] = [0x7F7F7F7F7F7F7F7F, 0x007F7F7F7F7F7F7F, 0x00FFFFFFFFFFFFFF, 0x00FEFEFEFEFEFEFE];
     let mut i = 2;
     while i < 8 {
         let mut j = 0;
         while j < 4 {
-            simd_masks[i][j] = simd_masks[i - 1][j] & simd_masks[i - 1][j] >> DIRECTIONS.as_array()[j];
+            simd_masks[i][j] = simd_masks[i - 1][j] & simd_masks[i - 1][j] >> DIRS[1].as_array()[j];
+            j += 1;
+        }
+        i += 1;
+    }
+    unsafe { transmute(simd_masks) }
+};
+pub static SHL_MASK: [u64x4; 8] = {
+    let mut simd_masks = [[!0u64; 4]; 8];
+    simd_masks[1] = [0xFEFEFEFEFEFEFEFE, 0xFEFEFEFEFEFEFE00, 0xFFFFFFFFFFFFFF00, 0x7F7F7F7F7F7F7F00];
+    let mut i = 2;
+    while i < 8 {
+        let mut j = 0;
+        while j < 4 {
+            simd_masks[i][j] = simd_masks[i - 1][j] & simd_masks[i - 1][j] << DIRS[1].as_array()[j];
             j += 1;
         }
         i += 1;
@@ -76,6 +98,14 @@ pub struct MakeData {
     pub score: i32,
 }
 
+pub enum GenMvResult {
+    Ok(GenMvData),
+}
+
+pub struct GenMvData {
+    pub playable: u64,
+}
+
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     let [p, c] = f.as_array(-1);
     let bit = 1 << mv;
@@ -83,8 +113,8 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     let mut yugo = p.opp_yugo;
     let mut score = c.score;
     let mut masks = Simd::splat(migo | yugo);
-    masks &= masks >> DIRECTIONS;
-    masks &= masks >> DIRECTIONS >> DIRECTIONS;
+    masks &= masks >> DIRS[1];
+    masks &= masks >> DIRS[2];
     masks &= SHR_MASK[3];
     let line_4 = masks;
     'b: {
@@ -92,14 +122,14 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
             // no 4 line
             break 'b;
         }
-        let line_5 = masks & masks >> DIRECTIONS;
+        let line_5 = masks & masks >> DIRS[1];
         if line_5.reduce_or() != 0 {
             // has 5+ line
             return MakeResult::Illegal;
         }
         // no 5+ and at least one 4 line
-        masks |= masks << DIRECTIONS;
-        masks |= masks << DIRECTIONS << DIRECTIONS;
+        masks |= masks << DIRS[1];
+        masks |= masks << DIRS[2];
         yugo |= bit;
         if ((Simd::splat(yugo) & masks).simd_eq(masks).to_int() & masks.cast()).reduce_or() != 0 {
             // at least one 4 line of yugos
@@ -116,4 +146,29 @@ pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
     f.score = make.score;
+}
+
+pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {
+    let own = Simd::splat(own(f));
+    let line_2 = own & own >> DIRS[1];
+    let line_3 = line_2 & own << DIRS[1];
+    let pi_a = own << DIRS[1] & line_3 >> DIRS[2] & SHR_MASK[3] & SHL_MASK[1];
+    let pi_b = own >> DIRS[1] & line_3 << DIRS[2] & SHR_MASK[1] & SHL_MASK[3];
+    let two_two = line_2 >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[2] & SHL_MASK[2];
+    let too_long = pi_a | pi_b | two_two;
+    let too_long = too_long.reduce_or();
+    let playable = !occ(f) & !too_long;
+    GenMvResult::Ok(GenMvData { playable })
+}
+
+pub fn opp(f: MultiMut<Frame>) -> u64 {
+    f.opp_migo | f.opp_yugo
+}
+
+pub fn own(f: MultiMut<Frame>) -> u64 {
+    opp(f.offset(-1))
+}
+
+pub fn occ(f: MultiMut<Frame>) -> u64 {
+    own(f) | opp(f)
 }

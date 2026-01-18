@@ -3,7 +3,7 @@ use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{DIRECTIONS, Frame, Global, MakeResult, SHR_MASK, Thread, apply, make};
+use crate::state::{DIRS, Frame, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -30,13 +30,15 @@ pub fn search(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    let open = !(f[-1].opp_migo | f[-1].opp_yugo | f.opp_migo | f.opp_yugo);
+    let playable = match gen_mv(f) {
+        GenMvResult::Ok(data) => data.playable,
+    };
     let killer_0 = 1 << f.killers[0];
     let killer_1 = 1 << f.killers[1];
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
-    'moves: for mut open in [open & killer_0, open & killer_1, open & !killer_0 & !killer_1] {
+    'moves: for mut open in [playable & killer_0, playable & killer_1, playable & !killer_0 & !killer_1] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
             match make(f, mv) {
@@ -54,9 +56,8 @@ pub fn search(
                             let yugos = yugo.count_ones() as i32;
                             let pieces = migo | yugo;
                             let simd_pieces = Simd::splat(pieces);
-                            let coherence_masks_near = simd_pieces & simd_pieces >> DIRECTIONS & SHR_MASK[1];
-                            let coherence_masks_far =
-                                simd_pieces & simd_pieces >> DIRECTIONS >> DIRECTIONS & SHR_MASK[2];
+                            let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
+                            let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
                             let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
                                 + coherence_masks_far.count_ones().reduce_sum() as i32;
                             EvalData { migos, yugos, coherence }
@@ -84,7 +85,7 @@ pub fn search(
                         }
                     }
                 }
-                MakeResult::Illegal => (),
+                MakeResult::Illegal => unreachable!(),
                 MakeResult::Igo => {
                     // terminal state is technically the *next* ply
                     best_value = MAX_VALUE - (f.ply + 1);
