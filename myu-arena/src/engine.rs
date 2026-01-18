@@ -5,7 +5,11 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, RecvTimeoutError},
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -55,6 +59,7 @@ pub enum MoveResult {
     NoMove, // Engine returned None (shouldn't happen in normal play)
     Timeout,
     Crash,
+    Stopped, // Graceful shutdown in progress
     #[allow(dead_code)]
     ProtocolError(String),
     #[allow(dead_code)]
@@ -74,6 +79,7 @@ pub struct Engine {
     start_time: Instant,
     engine_name: Option<String>,
     timeout_ms: u64,
+    stop_flag: Arc<AtomicBool>,
 }
 
 impl Engine {
@@ -84,6 +90,7 @@ impl Engine {
         time_ms: u64,
         timeout_leniency: f64,
         logs_dir: Option<PathBuf>,
+        stop_flag: Arc<AtomicBool>,
     ) -> Result<Self, String> {
         let name = name.into();
         let mut child = Command::new(path)
@@ -151,6 +158,7 @@ impl Engine {
             start_time: Instant::now(),
             engine_name: None,
             timeout_ms,
+            stop_flag,
         };
 
         // Wait for engine identification
@@ -314,6 +322,10 @@ impl Engine {
                 },
                 Ok(None) => continue, // Timeout on recv, keep waiting
                 Err(e) => {
+                    // Don't report errors during graceful shutdown
+                    if self.stop_flag.load(Ordering::SeqCst) {
+                        return MoveResult::Stopped;
+                    }
                     eprintln!("[{}] Communication error: {}", self.name, e);
                     self.write_log(LogReason::Crash);
                     return MoveResult::Crash;

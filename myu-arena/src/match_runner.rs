@@ -169,11 +169,12 @@ impl EngineRole {
 struct ManagedEngine {
     engine: Option<Engine>,
     role: EngineRole,
+    stop_flag: Arc<AtomicBool>,
 }
 
 impl ManagedEngine {
-    fn new(role: EngineRole) -> Self {
-        Self { engine: None, role }
+    fn new(role: EngineRole, stop_flag: Arc<AtomicBool>) -> Self {
+        Self { engine: None, role, stop_flag }
     }
 
     /// Ensure the engine is ready to play. Spawns if needed.
@@ -185,6 +186,7 @@ impl ManagedEngine {
                 config.time_ms,
                 config.timeout_leniency,
                 config.logs_dir.clone(),
+                self.stop_flag.clone(),
             )?;
             engine.sync()?;
             self.engine = Some(engine);
@@ -305,8 +307,8 @@ impl MatchRunner {
             let stop_flag = self.stop_flag.clone();
 
             thread::spawn(move || {
-                let mut dev = ManagedEngine::new(EngineRole::Dev);
-                let mut base = ManagedEngine::new(EngineRole::Base);
+                let mut dev = ManagedEngine::new(EngineRole::Dev, stop_flag.clone());
+                let mut base = ManagedEngine::new(EngineRole::Base, stop_flag.clone());
 
                 while !stop_flag.load(Ordering::SeqCst) {
                     let opening = match task_rx.lock().unwrap().recv() {
@@ -338,7 +340,7 @@ impl MatchRunner {
         });
 
         // Return iterator
-        GamePairIterator { result_rx, received: 0, max_pairs, stop_flag: self.stop_flag }
+        GamePairIterator { result_rx, received: 0, max_pairs, stop_flag: self.stop_flag, concurrency: self.concurrency }
     }
 }
 
@@ -347,16 +349,38 @@ struct GamePairIterator {
     received: usize,
     max_pairs: usize,
     stop_flag: Arc<AtomicBool>,
+    concurrency: usize,
 }
 
 impl Iterator for GamePairIterator {
     type Item = GamePairResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.received >= self.max_pairs || self.stop_flag.load(Ordering::SeqCst) {
+        if self.received >= self.max_pairs {
             return None;
         }
+
+        // If stop requested, don't iterate further
+        if self.stop_flag.load(Ordering::SeqCst) {
+            return None;
+        }
+
         self.result_rx.recv().ok().inspect(|_| self.received += 1)
+    }
+}
+
+impl Drop for GamePairIterator {
+    fn drop(&mut self) {
+        // Signal stop so workers finish after their current task
+        self.stop_flag.store(true, Ordering::SeqCst);
+
+        // Wait for any in-flight game pairs to complete (up to concurrency workers may be active)
+        // Using blocking recv since we want to wait for workers to finish cleanly
+        for _ in 0..self.concurrency {
+            if self.result_rx.recv().is_err() {
+                break; // Channel closed, all workers have exited
+            }
+        }
     }
 }
 
@@ -557,6 +581,7 @@ fn run_game_loop(
                 );
             }
             MoveResult::EngineError(_) => continue,
+            MoveResult::Stopped => return RawGameResult::stopped(game),
         }
     }
 }
