@@ -111,7 +111,7 @@ pub struct GenMvData {
 }
 
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
-    MakeData { migo: f[-1].opp_migo | 1 << mv, yugo: f[-1].opp_yugo, score: -f.score }
+    MakeData { migo: f[-1].opp_migo | 1 << mv, yugo: f[-1].opp_yugo, score: f.score }
 }
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
@@ -141,14 +141,13 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
         migo &= !masks.reduce_or();
         score += unsafe { _mm256_movemask_pd(transmute(line_4.simd_ne(Simd::default()))) }.count_ones() as i32;
     }
-    score *= -1;
     MakeResult::Ok(MakeData { migo, yugo, score })
 }
 
 pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
-    f.score = make.score;
+    f.score = -make.score;
 }
 
 pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {

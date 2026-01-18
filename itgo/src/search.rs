@@ -72,7 +72,7 @@ pub fn search(
             } else {
                 make_migo(f, mv)
             };
-            let value = -if depth == 0 {
+            let value = if depth == 0 {
                 struct EvalData {
                     migos: i32,
                     yugos: i32,
@@ -92,13 +92,13 @@ pub fn search(
                     EvalData { migos, yugos, coherence }
                 }
 
-                let my = side_eval(f.opp_migo, f.opp_yugo);
-                let opp = side_eval(new.migo, new.yugo);
+                let my = side_eval(new.migo, new.yugo);
+                let opp = side_eval(f.opp_migo, f.opp_yugo);
                 new.score * 16 + (my.migos - opp.migos) + (my.yugos - opp.yugos) * 64 + (my.coherence - opp.coherence)
             } else {
                 let f = f.offset(1);
                 apply(f, new);
-                search(global, thread, f, depth, -beta, -alpha).0
+                -search(global, thread, f, depth, -beta, -alpha).0
             };
             if value > best_value {
                 best_value = value;
