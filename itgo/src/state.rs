@@ -86,11 +86,13 @@ pub struct Frame {
     pub killers: [u8; 2],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MakeResult {
     Ok(MakeData),
     Igo,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MakeData {
     pub migo: u64,
     pub yugo: u64,
@@ -104,6 +106,10 @@ pub enum GenMvResult {
 pub struct GenMvData {
     pub playable: u64,
     pub makes_yugo: u64,
+}
+
+pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
+    MakeData { migo: f[-1].opp_migo | 1 << mv, yugo: f[-1].opp_yugo, score: -f.score }
 }
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {

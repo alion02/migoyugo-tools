@@ -1,9 +1,11 @@
-use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
+use std::{cmp::Ordering, hint::unreachable_unchecked, panic::resume_unwind, simd::prelude::*, sync::atomic};
 
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{DIRS, Frame, GenMvData, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make};
+use crate::state::{
+    DIRS, Frame, GenMvData, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make, make_migo,
+};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -62,51 +64,51 @@ pub fn search(
     ] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
-            match make(f, mv) {
-                MakeResult::Ok(new) => {
-                    let value = -if depth == 0 {
-                        struct EvalData {
-                            migos: i32,
-                            yugos: i32,
-                            coherence: i32,
-                        }
-
-                        #[inline]
-                        fn side_eval(migo: u64, yugo: u64) -> EvalData {
-                            let migos = migo.count_ones() as i32;
-                            let yugos = yugo.count_ones() as i32;
-                            let pieces = migo | yugo;
-                            let simd_pieces = Simd::splat(pieces);
-                            let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
-                            let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
-                            let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
-                                + coherence_masks_far.count_ones().reduce_sum() as i32;
-                            EvalData { migos, yugos, coherence }
-                        }
-
-                        let my = side_eval(f.opp_migo, f.opp_yugo);
-                        let opp = side_eval(new.migo, new.yugo);
-                        new.score * 16
-                            + (my.migos - opp.migos)
-                            + (my.yugos - opp.yugos) * 64
-                            + (my.coherence - opp.coherence)
-                    } else {
-                        let f = f.offset(1);
-                        apply(f, new);
-                        search(global, thread, f, depth, -beta, -alpha).0
-                    };
-                    if value > best_value {
-                        best_value = value;
-                        best_mv = mv;
-                        if value > alpha {
-                            if value >= beta {
-                                break 'moves;
-                            }
-                            alpha = value;
-                        }
-                    }
+            let new = if makes_yugo & 1 << mv != 0 {
+                match make(f, mv) {
+                    MakeResult::Ok(new) => new,
+                    MakeResult::Igo => unsafe { unreachable_unchecked() },
                 }
-                MakeResult::Igo => unreachable!(),
+            } else {
+                make_migo(f, mv)
+            };
+            let value = -if depth == 0 {
+                struct EvalData {
+                    migos: i32,
+                    yugos: i32,
+                    coherence: i32,
+                }
+
+                #[inline]
+                fn side_eval(migo: u64, yugo: u64) -> EvalData {
+                    let migos = migo.count_ones() as i32;
+                    let yugos = yugo.count_ones() as i32;
+                    let pieces = migo | yugo;
+                    let simd_pieces = Simd::splat(pieces);
+                    let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
+                    let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
+                    let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
+                        + coherence_masks_far.count_ones().reduce_sum() as i32;
+                    EvalData { migos, yugos, coherence }
+                }
+
+                let my = side_eval(f.opp_migo, f.opp_yugo);
+                let opp = side_eval(new.migo, new.yugo);
+                new.score * 16 + (my.migos - opp.migos) + (my.yugos - opp.yugos) * 64 + (my.coherence - opp.coherence)
+            } else {
+                let f = f.offset(1);
+                apply(f, new);
+                search(global, thread, f, depth, -beta, -alpha).0
+            };
+            if value > best_value {
+                best_value = value;
+                best_mv = mv;
+                if value > alpha {
+                    if value >= beta {
+                        break 'moves;
+                    }
+                    alpha = value;
+                }
             }
             open &= open - 1;
         }
