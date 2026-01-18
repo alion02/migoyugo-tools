@@ -76,25 +76,33 @@ pub fn search(
                 struct EvalData {
                     migos: i32,
                     yugos: i32,
-                    coherence: i32,
+                    migo_coherence: i32,
+                    yugo_coherence: i32,
                 }
 
                 #[inline]
                 fn side_eval(migo: u64, yugo: u64) -> EvalData {
                     let migos = migo.count_ones() as i32;
                     let yugos = yugo.count_ones() as i32;
-                    let pieces = migo | yugo;
-                    let simd_pieces = Simd::splat(pieces);
-                    let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
-                    let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
-                    let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
-                        + coherence_masks_far.count_ones().reduce_sum() as i32;
-                    EvalData { migos, yugos, coherence }
+                    let piece = migo | yugo;
+                    let piece = Simd::splat(piece);
+                    let migo_coherence_masks_near = piece & piece >> DIRS[1] & SHR_MASK[1];
+                    let migo_coherence_masks_far = piece & piece >> DIRS[2] & SHR_MASK[2];
+                    let migo_coherence = migo_coherence_masks_near.count_ones().reduce_sum() as i32
+                        + migo_coherence_masks_far.count_ones().reduce_sum() as i32;
+                    let yugo = Simd::splat(yugo);
+                    let yugo_coherence_masks = yugo & yugo >> DIRS[1] & SHR_MASK[1];
+                    let yugo_coherence = yugo_coherence_masks.count_ones().reduce_sum() as i32;
+                    EvalData { migos, yugos, migo_coherence, yugo_coherence }
                 }
 
                 let my = side_eval(f.opp_migo, f.opp_yugo);
                 let opp = side_eval(new.migo, new.yugo);
-                new.score * 16 + (my.migos - opp.migos) + (my.yugos - opp.yugos) * 64 + (my.coherence - opp.coherence)
+                new.score * 16
+                    + (my.migos - opp.migos)
+                    + (my.yugos - opp.yugos) * 64
+                    + (my.migo_coherence - opp.migo_coherence)
+                    + (my.yugo_coherence - opp.yugo_coherence) * 10
             } else {
                 let f = f.offset(1);
                 apply(f, new);
