@@ -1,6 +1,7 @@
 #![feature(portable_simd)]
 #![allow(
     clippy::missing_transmute_annotations, // don't care
+    clippy::collapsible_if, // less noisy to update
 )]
 
 use std::{

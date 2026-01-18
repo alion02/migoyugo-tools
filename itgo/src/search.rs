@@ -33,8 +33,8 @@ pub fn search(
     let open = !(f[-1].opp_migo | f[-1].opp_yugo | f.opp_migo | f.opp_yugo);
     let killer_0 = 1 << f.killers[0];
     let killer_1 = 1 << f.killers[1];
-    let mut node_value = -i32::MAX;
-    let mut node_mv = !0;
+    let mut best_value = -i32::MAX;
+    let mut best_mv = !0;
     depth -= 1;
     'moves: for mut open in [open & killer_0, open & killer_1, open & !killer_0 & !killer_1] {
         while open != 0 {
@@ -73,37 +73,44 @@ pub fn search(
                         apply(f, new);
                         search(global, thread, f, depth, -beta, -alpha).0
                     };
-                    if value > node_value {
-                        node_value = value;
-                        node_mv = mv;
+                    if value > best_value {
+                        best_value = value;
+                        best_mv = mv;
                         if value > alpha {
-                            alpha = value;
-                            if alpha >= beta {
-                                if f.killers[0] != mv {
-                                    if f.killers[1] != mv {
-                                        f.killers[1] = mv;
-                                    } else {
-                                        f.killers = [mv, f.killers[0]];
-                                    }
-                                }
+                            if value >= beta {
                                 break 'moves;
                             }
+                            alpha = value;
                         }
                     }
                 }
                 MakeResult::Illegal => (),
-                MakeResult::Igo => return (MAX_VALUE - (f.ply + 1), mv), // terminal state is technically the *next* ply
+                MakeResult::Igo => {
+                    // terminal state is technically the *next* ply
+                    best_value = MAX_VALUE - (f.ply + 1);
+                    best_mv = mv;
+                    break 'moves;
+                }
             }
             open &= open - 1;
         }
     }
-    if node_mv == !0 {
+    if best_mv == !0 {
         // Wego: no legal moves
-        node_value = match f.score.cmp(&0) {
+        best_value = match f.score.cmp(&0) {
             Ordering::Greater => MAX_VALUE - f.ply,
             Ordering::Equal => 0,
             Ordering::Less => f.ply - MAX_VALUE,
         };
     }
-    (node_value, node_mv)
+    if best_value >= beta {
+        if f.killers[0] != best_mv {
+            if f.killers[1] != best_mv {
+                f.killers[1] = best_mv;
+            } else {
+                f.killers = [best_mv, f.killers[0]];
+            }
+        }
+    }
+    (best_value, best_mv)
 }
