@@ -3,6 +3,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader, BufWriter, Write},
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
@@ -97,6 +98,7 @@ impl Engine {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .process_group(0)
             .spawn()
             .map_err(|e| format!("Failed to spawn {name}: {e}"))?;
 
