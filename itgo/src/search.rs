@@ -3,7 +3,7 @@ use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{DIRS, Frame, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make};
+use crate::state::{DIRS, Frame, GenMvData, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -30,9 +30,7 @@ pub fn search(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    let playable = match gen_mv(f) {
-        GenMvResult::Ok(data) => data.playable,
-    };
+    let GenMvResult::Ok(GenMvData { playable, makes_yugo }) = gen_mv(f);
     if playable == 0 {
         // Wego: no legal moves
         let best_value = match f.score.cmp(&0) {
@@ -47,7 +45,12 @@ pub fn search(
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
-    'moves: for mut open in [playable & killer_0, playable & killer_1, playable & !killer_0 & !killer_1] {
+    'moves: for mut open in [
+        playable & killer_0,
+        playable & killer_1,
+        makes_yugo & !killer_0 & !killer_1,
+        playable & !makes_yugo & !killer_0 & !killer_1,
+    ] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
             match make(f, mv) {

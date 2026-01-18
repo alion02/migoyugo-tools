@@ -103,6 +103,7 @@ pub enum GenMvResult {
 
 pub struct GenMvData {
     pub playable: u64,
+    pub makes_yugo: u64,
 }
 
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
@@ -121,7 +122,7 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
             // no 4 line
             break 'b;
         }
-        // no 5+ and at least one 4 line
+        // at least one 4 line
         masks |= masks << DIRS[1];
         masks |= masks << DIRS[2];
         yugo |= bit;
@@ -152,7 +153,13 @@ pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {
     let too_long = pi_a | pi_b | two_two;
     let too_long = too_long.reduce_or();
     let playable = !occ(f) & !too_long;
-    GenMvResult::Ok(GenMvData { playable })
+    let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
+    let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
+    let two_one_a = own << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
+    let two_one_b = own >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+    let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
+    let makes_yugo = makes_yugo.reduce_or() & playable;
+    GenMvResult::Ok(GenMvData { playable, makes_yugo })
 }
 
 pub fn opp(f: MultiMut<Frame>) -> u64 {
