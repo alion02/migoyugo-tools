@@ -1,4 +1,4 @@
-#![feature(portable_simd)]
+#![feature(portable_simd, likely_unlikely)]
 #![allow(
     clippy::missing_transmute_annotations, // don't care
     clippy::collapsible_if, // less noisy to update

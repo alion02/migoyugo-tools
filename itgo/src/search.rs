@@ -3,7 +3,9 @@ use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{DIRS, Frame, GenMvData, Global, SHR_MASK, Thread, apply, gen_mv, has_line, make_migo, make_yugo};
+use crate::state::{
+    DIRS, Frame, GenMvData, Global, SHR_MASK, Thread, almost_lines, apply, gen_mv, make_migo, make_yugo,
+};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -31,13 +33,16 @@ pub fn search(
     }
     thread.nodes += 1;
     let GenMvData { playable, makes_yugo } = gen_mv(f);
-    let mut mask = makes_yugo;
-    while mask != 0 {
-        let mv = mask.trailing_zeros() as u8;
-        if has_line(f[-1].opp_yugo | 1 << mv) {
-            return (MAX_VALUE - (f.ply + 1), mv); // terminal state is technically the *next* ply
+    if makes_yugo != 0 {
+        // FIXME: splatting makes_yugo is dog since we depend on a tree reduce hidden within gen_mv
+        let igo = almost_lines(f[-1].opp_yugo).any_line & Simd::splat(makes_yugo);
+        // workaround: doing the obvious thing (reduce_or outside, != 0 for condition) materializes a tree reduce
+        // outside the loop; we fool llvm into producing the better code (vptest) by using an equivalent operation
+        if igo.simd_ne(Simd::default()).any() {
+            let value = MAX_VALUE - (f.ply + 1); // terminal state is technically the *next* ply
+            let mv = igo.reduce_or().trailing_zeros() as u8;
+            return (value, mv);
         }
-        mask &= mask - 1;
     }
     if playable == 0 {
         // Wego: no legal moves

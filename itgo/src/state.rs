@@ -194,22 +194,36 @@ impl GenMvData {
 }
 
 pub fn gen_mv(f: MultiMut<Frame>) -> GenMvData {
-    let masks = Simd::splat(own(f));
-    let line_2 = masks & masks >> DIRS[1];
-    let line_3 = line_2 & masks << DIRS[1];
-    let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
-    let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
-    let two_one_a = masks << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
-    let two_one_b = masks >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+    let AlmostLines { ext_three_a, ext_three_b, two_one_a, two_one_b, any_line } = almost_lines(own(f));
     let pi_a = ext_three_a & two_one_a;
     let pi_b = ext_three_b & two_one_b;
     let two_two = two_one_a & two_one_b;
     let too_long = pi_a | pi_b | two_two;
     let too_long = too_long.reduce_or();
     let playable = !occ(f) & !too_long;
-    let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
+    let makes_yugo = any_line;
     let makes_yugo = makes_yugo.reduce_or() & playable;
     GenMvData { playable, makes_yugo }
+}
+
+pub struct AlmostLines {
+    pub ext_three_a: u64x4,
+    pub ext_three_b: u64x4,
+    pub two_one_a: u64x4,
+    pub two_one_b: u64x4,
+    pub any_line: u64x4,
+}
+
+pub fn almost_lines(mask: u64) -> AlmostLines {
+    let masks = Simd::splat(mask);
+    let line_2 = masks & masks >> DIRS[1];
+    let line_3 = line_2 & masks << DIRS[1];
+    let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
+    let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
+    let two_one_a = masks << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
+    let two_one_b = masks >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+    let makes_line = ext_three_a | ext_three_b | two_one_a | two_one_b;
+    AlmostLines { ext_three_a, ext_three_b, two_one_a, two_one_b, any_line: makes_line }
 }
 
 pub fn has_line(mask: u64) -> bool {
