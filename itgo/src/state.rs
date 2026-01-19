@@ -132,36 +132,6 @@ pub struct MakeData {
     pub psqt_value: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GenMvData {
-    pub playable: u64,
-    pub makes_yugo: u64,
-}
-
-impl GenMvData {
-    pub fn make(&self, f: MultiMut<Frame>, mv: u8) -> MakeResult {
-        if self.playable & 1 << mv == 0 {
-            return MakeResult::Illegal;
-        }
-        if self.makes_yugo & 1 << mv == 0 {
-            return MakeResult::Ok(make_migo(f, mv));
-        }
-        let new = make_yugo(f, mv);
-        if has_line(new.yugo) {
-            return MakeResult::Igo;
-        }
-        MakeResult::Ok(new)
-    }
-}
-
-pub fn has_line(mask: u64) -> bool {
-    let mut masks = Simd::splat(mask);
-    masks &= masks >> DIRS[1];
-    masks &= masks >> DIRS[2];
-    masks &= SHR_MASK[3];
-    masks.reduce_or() != 0
-}
-
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     MakeData {
         migo: f[-1].opp_migo | 1 << mv,
@@ -201,14 +171,36 @@ pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.psqt_value = -make.psqt_value;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GenMvData {
+    pub playable: u64,
+    pub makes_yugo: u64,
+}
+
+impl GenMvData {
+    pub fn make(&self, f: MultiMut<Frame>, mv: u8) -> MakeResult {
+        if self.playable & 1 << mv == 0 {
+            return MakeResult::Illegal;
+        }
+        if self.makes_yugo & 1 << mv == 0 {
+            return MakeResult::Ok(make_migo(f, mv));
+        }
+        let new = make_yugo(f, mv);
+        if has_line(new.yugo) {
+            return MakeResult::Igo;
+        }
+        MakeResult::Ok(new)
+    }
+}
+
 pub fn gen_mv(f: MultiMut<Frame>) -> GenMvData {
-    let own = Simd::splat(own(f));
-    let line_2 = own & own >> DIRS[1];
-    let line_3 = line_2 & own << DIRS[1];
+    let masks = Simd::splat(own(f));
+    let line_2 = masks & masks >> DIRS[1];
+    let line_3 = line_2 & masks << DIRS[1];
     let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
     let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
-    let two_one_a = own << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
-    let two_one_b = own >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+    let two_one_a = masks << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
+    let two_one_b = masks >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
     let pi_a = ext_three_a & two_one_a;
     let pi_b = ext_three_b & two_one_b;
     let two_two = two_one_a & two_one_b;
@@ -218,6 +210,14 @@ pub fn gen_mv(f: MultiMut<Frame>) -> GenMvData {
     let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
     let makes_yugo = makes_yugo.reduce_or() & playable;
     GenMvData { playable, makes_yugo }
+}
+
+pub fn has_line(mask: u64) -> bool {
+    let mut masks = Simd::splat(mask);
+    masks &= masks >> DIRS[1];
+    masks &= masks >> DIRS[2];
+    masks &= SHR_MASK[3];
+    masks.reduce_or() != 0
 }
 
 pub fn opp(f: MultiMut<Frame>) -> u64 {
