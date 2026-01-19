@@ -107,8 +107,9 @@ pub fn start() -> SyncSender<Cmd> {
                     let thread = &mut Thread::new(node_limit);
                     let mut best = None;
                     for depth in 1..=depth_limit {
-                        let result =
-                            catch_unwind(AssertUnwindSafe(|| search(&global, thread, f, depth, -i32::MAX, i32::MAX)));
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            search::<(i32, u8)>(&global, thread, f, depth, -i32::MAX, i32::MAX)
+                        }));
                         match result {
                             Ok((eval, mv)) => {
                                 best = Sq::from_raw(mv);

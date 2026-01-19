@@ -11,14 +11,30 @@ pub const MAX_VALUE: i32 = 0x7FFF;
 
 pub struct ExitSearch;
 
-pub fn search(
+pub trait Return {
+    fn from_pair(value: i32, mv: u8) -> Self;
+}
+
+impl Return for (i32, u8) {
+    fn from_pair(value: i32, mv: u8) -> Self {
+        (value, mv)
+    }
+}
+
+impl Return for i32 {
+    fn from_pair(value: i32, _mv: u8) -> Self {
+        value
+    }
+}
+
+pub fn search<R: Return>(
     global: &Global,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
     mut depth: u32,
     mut alpha: i32,
     beta: i32,
-) -> (i32, u8) {
+) -> R {
     if thread.tick_countdown() {
         if global.stop.load(atomic::Ordering::Relaxed)
             || global.limits.iter().any(|&limit| match limit {
@@ -41,7 +57,7 @@ pub fn search(
         if igo.simd_ne(Simd::default()).any() {
             let value = MAX_VALUE - (f.ply + 1); // terminal state is technically the *next* ply
             let mv = igo.reduce_or().trailing_zeros() as u8;
-            return (value, mv);
+            return Return::from_pair(value, mv);
         }
     }
     if playable == 0 {
@@ -51,7 +67,7 @@ pub fn search(
             Ordering::Equal => 0,
             Ordering::Less => f.ply - MAX_VALUE,
         };
-        return (best_value, !0);
+        return Return::from_pair(best_value, !0);
     }
     let killer_0 = 1 << f.killers[0];
     let killer_1 = 1 << f.killers[1];
@@ -89,7 +105,7 @@ pub fn search(
             } else {
                 let f = f.offset(1);
                 apply(f, new);
-                -search(global, thread, f, depth, -beta, -alpha).0
+                -search::<i32>(global, thread, f, depth, -beta, -alpha)
             };
             if value > best_value {
                 best_value = value;
@@ -113,5 +129,5 @@ pub fn search(
             }
         }
     }
-    (best_value, best_mv)
+    Return::from_pair(best_value, best_mv)
 }
