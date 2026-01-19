@@ -151,6 +151,29 @@ pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     }
 }
 
+pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
+    let mut migo = f[-1].opp_migo;
+    let yugo = f[-1].opp_yugo | 1 << mv;
+    let mut score = f.score;
+    let mut psqt_value = f.psqt_value + PSQT_YUGO[mv as usize];
+    let mut masks = Simd::splat(migo | yugo);
+    masks &= masks >> DIRS[1];
+    masks &= masks >> DIRS[2];
+    masks &= SHR_MASK[3];
+    let has_line = masks;
+    masks |= masks << DIRS[1];
+    masks |= masks << DIRS[2];
+    let lines = masks.reduce_or();
+    let mut remove = migo & lines;
+    while remove != 0 {
+        psqt_value -= PSQT_MIGO[remove.trailing_zeros() as usize];
+        remove &= remove - 1;
+    }
+    migo &= !lines;
+    score += unsafe { _mm256_movemask_pd(transmute(has_line.simd_ne(Simd::default()))) }.count_ones() as i32;
+    MakeData { migo, yugo, score, psqt_value }
+}
+
 pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
     let [p, c] = f.as_array(-1);
     let bit = 1 << mv;
@@ -178,6 +201,7 @@ pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
         }
         psqt_value += PSQT_YUGO[mv as usize];
         let all_lines = masks.reduce_or();
+        migo &= !bit;
         let mut remove = migo & all_lines;
         while remove != 0 {
             psqt_value -= PSQT_MIGO[remove.trailing_zeros() as usize];

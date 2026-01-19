@@ -1,10 +1,11 @@
-use std::{cmp::Ordering, hint::unreachable_unchecked, panic::resume_unwind, simd::prelude::*, sync::atomic};
+use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
 use crate::state::{
     DIRS, Frame, GenMvData, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make, make_migo,
+    make_yugo,
 };
 
 pub const MAX_VALUE: i32 = 0x7FFF;
@@ -64,14 +65,7 @@ pub fn search(
     ] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
-            let new = if makes_yugo & 1 << mv != 0 {
-                match make(f, mv) {
-                    MakeResult::Ok(new) => new,
-                    MakeResult::Igo => unsafe { unreachable_unchecked() },
-                }
-            } else {
-                make_migo(f, mv)
-            };
+            let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) };
             let value = if depth == 0 {
                 struct EvalData {
                     coherence: i32,
