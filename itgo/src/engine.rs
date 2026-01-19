@@ -37,6 +37,7 @@ impl Default for Position {
                     opp_migo: 0,
                     opp_yugo: 0,
                     opp_makes_yugo: 0,
+                    opp_makes_igo: 0,
                     opp_too_long: 0,
                     score: 0,
                     psqt_value: 0,
