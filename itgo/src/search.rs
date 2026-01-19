@@ -3,10 +3,7 @@ use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{
-    DIRS, Frame, GenMvData, GenMvResult, Global, MakeResult, SHR_MASK, Thread, apply, gen_mv, make, make_migo,
-    make_yugo,
-};
+use crate::state::{DIRS, Frame, GenMvData, Global, SHR_MASK, Thread, apply, gen_mv, has_line, make_migo, make_yugo};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -33,13 +30,12 @@ pub fn search(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    let GenMvResult::Ok(GenMvData { playable, makes_yugo }) = gen_mv(f);
+    let GenMvData { playable, makes_yugo } = gen_mv(f);
     let mut mask = makes_yugo;
     while mask != 0 {
         let mv = mask.trailing_zeros() as u8;
-        match make(f, mv) {
-            MakeResult::Ok(_) => (),
-            MakeResult::Igo => return (MAX_VALUE - (f.ply + 1), mv), // terminal state is technically the *next* ply
+        if has_line(f[-1].opp_yugo | 1 << mv) {
+            return (MAX_VALUE - (f.ply + 1), mv); // terminal state is technically the *next* ply
         }
         mask &= mask - 1;
     }
@@ -65,7 +61,7 @@ pub fn search(
     ] {
         while open != 0 {
             let mv = open.trailing_zeros() as u8;
-            let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) };
+            let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
             let value = if depth == 0 {
                 struct EvalData {
                     coherence: i32,

@@ -13,7 +13,7 @@ use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg};
 use crate::{
     search::{ExitSearch, search},
     send, send_error,
-    state::{Frame, Global, MakeResult, Thread, apply, make},
+    state::{Frame, Global, MakeResult, Thread, apply, gen_mv},
 };
 
 #[derive(Debug, Clone)]
@@ -66,6 +66,7 @@ pub fn start() -> SyncSender<Cmd> {
                         position.index = new_index;
                     }
                     UserMsg::Play(mvs) => 'b: {
+                        let original = position.index;
                         for mv in mvs {
                             if position.unplayable {
                                 send_error("Cannot play on this game state");
@@ -73,8 +74,13 @@ pub fn start() -> SyncSender<Cmd> {
                             }
                             let f = position.frame_ptr();
                             // TODO: is_legal, is_terminal
-                            match make(f, mv.raw()) {
+                            match gen_mv(f).make(f, mv.raw()) {
                                 MakeResult::Ok(data) => apply(f.offset(1), data),
+                                MakeResult::Illegal => {
+                                    send_error("Sequence contains illegal move(s), cancelling");
+                                    position.index = original;
+                                    break 'b;
+                                }
                                 MakeResult::Igo => position.unplayable = true,
                             }
                             position.index += 1;

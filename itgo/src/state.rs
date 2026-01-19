@@ -120,6 +120,7 @@ pub struct Frame {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MakeResult {
     Ok(MakeData),
+    Illegal,
     Igo,
 }
 
@@ -132,14 +133,33 @@ pub struct MakeData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GenMvResult {
-    Ok(GenMvData),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GenMvData {
     pub playable: u64,
     pub makes_yugo: u64,
+}
+
+impl GenMvData {
+    pub fn make(&self, f: MultiMut<Frame>, mv: u8) -> MakeResult {
+        if self.playable & 1 << mv == 0 {
+            return MakeResult::Illegal;
+        }
+        if self.makes_yugo & 1 << mv == 0 {
+            return MakeResult::Ok(make_migo(f, mv));
+        }
+        let new = make_yugo(f, mv);
+        if has_line(new.yugo) {
+            return MakeResult::Igo;
+        }
+        MakeResult::Ok(new)
+    }
+}
+
+pub fn has_line(mask: u64) -> bool {
+    let mut masks = Simd::splat(mask);
+    masks &= masks >> DIRS[1];
+    masks &= masks >> DIRS[2];
+    masks &= SHR_MASK[3];
+    masks.reduce_or() != 0
 }
 
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
@@ -174,45 +194,6 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     MakeData { migo, yugo, score, psqt_value }
 }
 
-pub fn make(f: MultiMut<Frame>, mv: u8) -> MakeResult {
-    let [p, c] = f.as_array(-1);
-    let bit = 1 << mv;
-    let mut migo = p.opp_migo | bit;
-    let mut yugo = p.opp_yugo;
-    let mut score = c.score;
-    let mut psqt_value = c.psqt_value;
-    let mut masks = Simd::splat(migo | yugo);
-    masks &= masks >> DIRS[1];
-    masks &= masks >> DIRS[2];
-    masks &= SHR_MASK[3];
-    let line_4 = masks;
-    {
-        if line_4.reduce_or() == 0 {
-            // no 4 line
-            return MakeResult::Ok(make_migo(f, mv));
-        }
-        // at least one 4 line
-        masks |= masks << DIRS[1];
-        masks |= masks << DIRS[2];
-        yugo |= bit;
-        if ((Simd::splat(yugo) & masks).simd_eq(masks).to_int() & masks.cast()).reduce_or() != 0 {
-            // at least one 4 line of yugos
-            return MakeResult::Igo;
-        }
-        psqt_value += PSQT_YUGO[mv as usize];
-        let all_lines = masks.reduce_or();
-        migo &= !bit;
-        let mut remove = migo & all_lines;
-        while remove != 0 {
-            psqt_value -= PSQT_MIGO[remove.trailing_zeros() as usize];
-            remove &= remove - 1;
-        }
-        migo &= !all_lines;
-        score += unsafe { _mm256_movemask_pd(transmute(line_4.simd_ne(Simd::default()))) }.count_ones() as i32;
-    }
-    MakeResult::Ok(MakeData { migo, yugo, score, psqt_value })
-}
-
 pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
@@ -220,7 +201,7 @@ pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
     f.psqt_value = -make.psqt_value;
 }
 
-pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {
+pub fn gen_mv(f: MultiMut<Frame>) -> GenMvData {
     let own = Simd::splat(own(f));
     let line_2 = own & own >> DIRS[1];
     let line_3 = line_2 & own << DIRS[1];
@@ -236,7 +217,7 @@ pub fn gen_mv(f: MultiMut<Frame>) -> GenMvResult {
     let playable = !occ(f) & !too_long;
     let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
     let makes_yugo = makes_yugo.reduce_or() & playable;
-    GenMvResult::Ok(GenMvData { playable, makes_yugo })
+    GenMvData { playable, makes_yugo }
 }
 
 pub fn opp(f: MultiMut<Frame>) -> u64 {
