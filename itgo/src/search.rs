@@ -83,7 +83,7 @@ pub fn search(
                 new.score * 16 + new.psqt_value + (my.coherence - opp.coherence)
             } else {
                 let f = f.offset(1);
-                apply(f, new);
+                apply(f, new, depth >= 2);
                 -search(global, thread, f, depth, -beta, -alpha).0
             };
             if value > best_value {

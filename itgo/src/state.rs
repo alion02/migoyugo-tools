@@ -111,6 +111,8 @@ impl Thread {
 pub struct Frame {
     pub opp_migo: u64,
     pub opp_yugo: u64,
+    pub opp_makes_yugo: u64,
+    pub opp_too_long: u64,
     pub score: i32,
     pub psqt_value: i32,
     pub ply: i32,
@@ -164,7 +166,25 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     MakeData { migo, yugo, score, psqt_value }
 }
 
-pub fn apply(mut f: MultiMut<Frame>, make: MakeData) {
+pub fn apply(mut f: MultiMut<Frame>, make: MakeData, compute_aux: bool) {
+    if compute_aux {
+        let masks = Simd::splat(make.migo | make.yugo);
+        let line_2 = masks & masks >> DIRS[1];
+        let line_3 = line_2 & masks << DIRS[1];
+        let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
+        let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
+        let two_one_a = masks << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
+        let two_one_b = masks >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
+        let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
+        let makes_yugo = makes_yugo.reduce_or();
+        let pi_a = ext_three_a & two_one_a;
+        let pi_b = ext_three_b & two_one_b;
+        let two_two = two_one_a & two_one_b;
+        let too_long = pi_a | pi_b | two_two;
+        let too_long = too_long.reduce_or();
+        f.opp_makes_yugo = makes_yugo;
+        f.opp_too_long = too_long;
+    }
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
     f.score = -make.score;
@@ -194,21 +214,8 @@ impl GenMvData {
 }
 
 pub fn gen_mv(f: MultiMut<Frame>) -> GenMvData {
-    let masks = Simd::splat(own(f));
-    let line_2 = masks & masks >> DIRS[1];
-    let line_3 = line_2 & masks << DIRS[1];
-    let ext_three_a = line_3 >> DIRS[2] & SHR_MASK[3];
-    let ext_three_b = line_3 << DIRS[2] & SHL_MASK[3];
-    let two_one_a = masks << DIRS[1] & line_2 >> DIRS[1] & SHR_MASK[2] & SHL_MASK[1];
-    let two_one_b = masks >> DIRS[1] & line_2 << DIRS[2] & SHR_MASK[1] & SHL_MASK[2];
-    let pi_a = ext_three_a & two_one_a;
-    let pi_b = ext_three_b & two_one_b;
-    let two_two = two_one_a & two_one_b;
-    let too_long = pi_a | pi_b | two_two;
-    let too_long = too_long.reduce_or();
-    let playable = !occ(f) & !too_long;
-    let makes_yugo = ext_three_a | ext_three_b | two_one_a | two_one_b;
-    let makes_yugo = makes_yugo.reduce_or() & playable;
+    let playable = !occ(f) & !f[-1].opp_too_long;
+    let makes_yugo = f[-1].opp_makes_yugo & playable;
     GenMvData { playable, makes_yugo }
 }
 

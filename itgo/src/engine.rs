@@ -33,7 +33,16 @@ impl Default for Position {
     fn default() -> Self {
         Self {
             stack: (-1..416)
-                .map(|ply| Frame { opp_migo: 0, opp_yugo: 0, score: 0, psqt_value: 0, ply, killers: [0, 1] })
+                .map(|ply| Frame {
+                    opp_migo: 0,
+                    opp_yugo: 0,
+                    opp_makes_yugo: 0,
+                    opp_too_long: 0,
+                    score: 0,
+                    psqt_value: 0,
+                    ply,
+                    killers: [0, 1],
+                })
                 .collect(),
             index: 1,
             unplayable: false,
@@ -75,7 +84,7 @@ pub fn start() -> SyncSender<Cmd> {
                             let f = position.frame_ptr();
                             // TODO: is_legal, is_terminal
                             match gen_mv(f).make(f, mv.raw()) {
-                                MakeResult::Ok(data) => apply(f.offset(1), data),
+                                MakeResult::Ok(data) => apply(f.offset(1), data, true),
                                 MakeResult::Illegal => {
                                     send_error("Sequence contains illegal move(s), cancelling");
                                     position.index = original;
