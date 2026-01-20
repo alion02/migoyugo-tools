@@ -84,7 +84,7 @@ pub fn start() -> SyncSender<Cmd> {
                             }
                             let f = position.frame_ptr();
                             match gen_mv(f).make(f, mv.raw()) {
-                                MakeResult::Ok(data) => apply(f.offset(1), data, true),
+                                MakeResult::Ok(data) => apply(f + 1, data, true),
                                 MakeResult::Illegal => {
                                     send_error("Sequence contains illegal move(s), cancelling");
                                     position.index = original;

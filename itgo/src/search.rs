@@ -78,7 +78,7 @@ pub fn search(
                 let opp = side_eval(f.opp_migo, f.opp_yugo);
                 new.score * 16 + new.psqt_value + (my.coherence - opp.coherence)
             } else {
-                let f = f.offset(1);
+                let f = f + 1;
                 apply(f, new, depth >= 2);
                 -search(global, thread, f, depth, -beta, -alpha).0
             };

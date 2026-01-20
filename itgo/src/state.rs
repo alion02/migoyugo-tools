@@ -248,7 +248,7 @@ pub fn opp(f: MultiMut<Frame>) -> u64 {
 }
 
 pub fn own(f: MultiMut<Frame>) -> u64 {
-    opp(f.offset(-1))
+    opp(f - 1)
 }
 
 pub fn occ(f: MultiMut<Frame>) -> u64 {

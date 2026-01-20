@@ -191,9 +191,9 @@ checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
 name = "multiptr"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b10b57d0f682380589a4159d5c8c5bd4a9817a4ba3c26ff50cd0243f7741916"
+checksum = "c73965a44b789c468b9574bb32ae588d92d7f9509cab1b91b879e637c64274a4"
 
 [[package]]
 name = "myu-arena"
