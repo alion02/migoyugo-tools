@@ -106,7 +106,7 @@ pub fn start() -> SyncSender<Cmd> {
                     }
                     let f = position.frame_ptr();
                     let mut node_limit = !0;
-                    let mut depth_limit = !0;
+                    let mut depth_limit = 64;
                     for &limit in &global.limits {
                         match limit {
                             Limit::Depth(depth) => depth_limit = depth_limit.min(depth),
