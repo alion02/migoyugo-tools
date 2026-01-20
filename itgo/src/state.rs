@@ -70,7 +70,7 @@ const fn to_symmetrical<T: Copy>(v: [T; 10]) -> [T; 64] {
     unsafe { (&raw const out).cast::<[T; 64]>().read() }
 }
 
-pub static PSQT_MIGO: [i32; 64] = to_symmetrical([-5, -4, -3, -2, 0, 0, 0, 3, 2, -1]);
+pub static PSQT_MIGO: [i32; 64] = to_symmetrical([2, 3, 4, 6, 6, 7, 9, 12, 11, 5]);
 
 pub static PSQT_YUGO: [i32; 64] = to_symmetrical([50, 52, 54, 56, 59, 61, 61, 65, 65, 70]);
 
