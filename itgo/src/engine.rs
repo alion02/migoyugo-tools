@@ -83,7 +83,6 @@ pub fn start() -> SyncSender<Cmd> {
                                 break 'b;
                             }
                             let f = position.frame_ptr();
-                            // TODO: is_legal, is_terminal
                             match gen_mv(f).make(f, mv.raw()) {
                                 MakeResult::Ok(data) => apply(f.offset(1), data, true),
                                 MakeResult::Illegal => {
