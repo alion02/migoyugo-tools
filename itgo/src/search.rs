@@ -1,9 +1,9 @@
-use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
+use std::{cmp::Ordering, panic::resume_unwind, sync::atomic};
 
 use multiptr::MultiMut;
 use myu_protocol::Limit;
 
-use crate::state::{DIRS, Frame, GenMvData, Global, SHR_MASK, Thread, apply, gen_mv, make_migo, make_yugo};
+use crate::state::{Frame, GenMvData, Global, Thread, apply, gen_mv, make_migo, make_yugo};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
@@ -59,24 +59,7 @@ pub fn search(
             let mv = open.trailing_zeros() as u8;
             let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
             let value = if depth == 0 {
-                struct EvalData {
-                    coherence: i32,
-                }
-
-                #[inline]
-                fn side_eval(migo: u64, yugo: u64) -> EvalData {
-                    let pieces = migo | yugo;
-                    let simd_pieces = Simd::splat(pieces);
-                    let coherence_masks_near = simd_pieces & simd_pieces >> DIRS[1] & SHR_MASK[1];
-                    let coherence_masks_far = simd_pieces & simd_pieces >> DIRS[2] & SHR_MASK[2];
-                    let coherence = coherence_masks_near.count_ones().reduce_sum() as i32
-                        + coherence_masks_far.count_ones().reduce_sum() as i32;
-                    EvalData { coherence }
-                }
-
-                let my = side_eval(new.migo, new.yugo);
-                let opp = side_eval(f.opp_migo, f.opp_yugo);
-                new.score * 20 + new.psqt_value + (my.coherence - opp.coherence)
+                new.score * 20 + new.psqt_value
             } else {
                 let f = f + 1;
                 apply(f, new, depth >= 2);
