@@ -44,38 +44,52 @@ pub fn search(
         };
         return (best_value, !0);
     }
-    let killer_0 = 1 << f.killers[0];
-    let killer_1 = 1 << f.killers[1];
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
-    'moves: for mut open in [
-        playable & killer_0,
-        playable & killer_1,
-        makes_yugo & !killer_0 & !killer_1,
-        playable & !makes_yugo & !killer_0 & !killer_1,
-    ] {
-        while open != 0 {
-            let mv = open.trailing_zeros() as u8;
-            let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
-            let value = if depth == 0 {
-                new.score * 20 + new.psqt_value
-            } else {
-                let f = f + 1;
-                apply(f, new, depth >= 2);
-                -search(global, thread, f, depth, -beta, -alpha).0
-            };
-            if value > best_value {
-                best_value = value;
-                best_mv = mv;
-                if value > alpha {
-                    if value >= beta {
-                        break 'moves;
+    'moves: {
+        macro_rules! try_mv {
+            ($mv:expr) => {
+                let mv = $mv;
+                let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
+                let value = if depth == 0 {
+                    new.score * 20 + new.psqt_value
+                } else {
+                    let f = f + 1;
+                    apply(f, new, depth >= 2);
+                    -search(global, thread, f, depth, -beta, -alpha).0
+                };
+                if value > best_value {
+                    best_value = value;
+                    best_mv = mv;
+                    if value > alpha {
+                        if value >= beta {
+                            break 'moves;
+                        }
+                        alpha = value;
                     }
-                    alpha = value;
                 }
-            }
-            open &= open - 1;
+            };
+        }
+        let killer_0 = 1 << f.killers[0];
+        if playable & killer_0 != 0 {
+            try_mv!(f.killers[0]);
+        }
+        let killer_1 = 1 << f.killers[1];
+        if playable & killer_1 != 0 {
+            try_mv!(f.killers[1]);
+        }
+        let mut searched = killer_0 | killer_1;
+        let mut mvs = makes_yugo & !searched;
+        while mvs != 0 {
+            try_mv!(mvs.trailing_zeros() as u8);
+            mvs &= mvs - 1;
+        }
+        searched |= makes_yugo;
+        let mut mvs = playable & !searched;
+        while mvs != 0 {
+            try_mv!(mvs.trailing_zeros() as u8);
+            mvs &= mvs - 1;
         }
     }
     if best_value >= beta {
