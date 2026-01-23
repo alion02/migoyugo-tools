@@ -2,38 +2,51 @@
 set -euo pipefail
 
 # SPRT testing script for itgo
-# Usage: ./sprt.sh [OPTIONS] [-- ARENA_ARGS...]
+# Usage: ./sprt.sh --test-dir DIR --result-dir DIR [OPTIONS] [-- ARENA_ARGS...]
+#
+# Required:
+#   -t, --test-dir DIR   Directory for engine binaries (must exist)
+#   -r, --result-dir DIR Directory for result files (created if needed)
 #
 # Modes:
 #   (default)            Test working directory vs HEAD
 #   -d, --dev COMMIT     Test specific commit as dev (enables commit mode)
 #   -b, --base COMMIT    Base commit to test against (default: HEAD)
+#
+# Other:
 #   -h, --help           Show this help message
 #
 # Everything after '--' is passed directly to myu-arena.
 #
 # Examples:
-#   ./sprt.sh                              # working dir vs HEAD
-#   ./sprt.sh -- --elo1 5                  # working dir vs HEAD, custom elo1
-#   ./sprt.sh -b HEAD~5                    # working dir vs HEAD~5
-#   ./sprt.sh -d HEAD -b HEAD~1            # commit vs commit mode
+#   ./sprt.sh -t .test -r .result -- --elo1 5
+#   ./sprt.sh -t .test -r .result -b HEAD~5
+#   ./sprt.sh -t .test -r .result -d HEAD -b HEAD~1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEST_DIR="$SCRIPT_DIR/.test"
-RESULT_DIR="$SCRIPT_DIR/.result"
+TEST_DIR=""
+RESULT_DIR=""
 
 DEV_COMMIT=""
 BASE_COMMIT="HEAD"
 ARENA_ARGS=()
 
 show_help() {
-    sed -n '3,16p' "$0" | sed 's/^# \?//'
+    sed -n '3,22p' "$0" | sed 's/^# \?//'
     exit 0
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -t|--test-dir)
+            TEST_DIR="$2"
+            shift 2
+            ;;
+        -r|--result-dir)
+            RESULT_DIR="$2"
+            shift 2
+            ;;
         -d|--dev)
             DEV_COMMIT="$2"
             shift 2
@@ -57,6 +70,24 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate required arguments
+if [[ -z "$TEST_DIR" ]]; then
+    echo "Error: --test-dir is required" >&2
+    echo "Use --help for usage information" >&2
+    exit 1
+fi
+
+if [[ -z "$RESULT_DIR" ]]; then
+    echo "Error: --result-dir is required" >&2
+    echo "Use --help for usage information" >&2
+    exit 1
+fi
+
+if [[ ! -d "$TEST_DIR" ]]; then
+    echo "Error: test directory does not exist: $TEST_DIR" >&2
+    exit 1
+fi
 
 # Determine mode
 if [[ -z "$DEV_COMMIT" ]]; then
@@ -145,26 +176,16 @@ if $STASH_CREATED; then
 fi
 trap - EXIT
 
-# Prepare output file
+# Prepare output directory
 mkdir -p "$RESULT_DIR"
-GAMES_FILE="$RESULT_DIR/games_$(date +%s).txt"
 
 echo ""
 echo "=== Running SPRT ==="
 echo ""
 
-# Default arena arguments
-DEFAULT_ARGS=(
-    --dev "$TEST_DIR/dev"
-    --base "$TEST_DIR/base"
-    --max-pairs 50000
-    --concurrency 14
-    --time-ms 100
-    --opening-book "$TEST_DIR/book.txt"
-    --games-file "$GAMES_FILE"
-    --logs-dir "$RESULT_DIR"
-    --elo1 10
-)
-
-# Run arena with defaults, allowing user args to override
-exec cargo run --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p myu-arena -- test "${DEFAULT_ARGS[@]}" "${ARENA_ARGS[@]}"
+# Run arena with user-provided args
+exec cargo run --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p myu-arena -- test \
+    --dev "$TEST_DIR/dev" \
+    --base "$TEST_DIR/base" \
+    --logs-dir "$RESULT_DIR" \
+    "${ARENA_ARGS[@]}"

@@ -56,7 +56,7 @@ pub struct TestArgs {
     pub elo1: f64,
 
     /// Maximum number of game pairs
-    #[arg(long, default_value = "5000")]
+    #[arg(long, default_value = "50000")]
     pub max_pairs: usize,
 
     /// Number of concurrent game pairs
@@ -64,11 +64,11 @@ pub struct TestArgs {
     pub concurrency: usize,
 
     /// Time control in milliseconds per move
-    #[arg(long, default_value = "1000")]
+    #[arg(long, default_value = "100")]
     pub time_ms: u64,
 
     /// Timeout leniency factor (multiplier on time control for timeout detection)
-    #[arg(long, default_value = "10.0")]
+    #[arg(long, default_value = "3.0")]
     pub timeout_leniency: f64,
 
     /// Path to opening book file (one line per opening, space-separated moves)
