@@ -11,7 +11,7 @@ use multiptr::MultiMut;
 use myu_protocol::{EngineMsg, Eval, Limit, Sq, UserMsg};
 
 use crate::{
-    search::{ExitSearch, search},
+    search::{self, ExitSearch, search},
     send, send_error,
     state::{Frame, Global, MakeResult, Thread, apply, gen_mv},
 };
@@ -54,6 +54,18 @@ impl Default for Position {
 pub enum Cmd {
     Msg(UserMsg),
     Start(Arc<Global>),
+}
+
+fn to_eval(score: i32, ply: i16) -> Eval {
+    // The search function returns mate scores relative to the start of the game (ply 0).
+    // We need to convert this to the number of moves from the current position.
+    if score.abs() >= search::MAX_VALUE - 1000 {
+        let plies_to_mate = search::MAX_VALUE - score.abs();
+        let plies_from_root = (plies_to_mate + 1 - ply as i32) / 2;
+        Eval::Decisive((plies_from_root as f64).copysign(score as f64) as i32)
+    } else {
+        Eval::Score(score)
+    }
 }
 
 pub fn start() -> SyncSender<Cmd> {
@@ -121,7 +133,7 @@ pub fn start() -> SyncSender<Cmd> {
                         match result {
                             Ok((eval, mv)) => {
                                 best = Sq::from_raw(mv);
-                                let eval = Eval::Score(eval); // TODO: convert properly
+                                let eval = to_eval(eval, f.ply);
                                 let nodes = thread.nodes;
                                 let time = global.elapsed();
                                 let knps = if time == 0 { nodes } else { nodes / time };
