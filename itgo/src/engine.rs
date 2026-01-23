@@ -1,5 +1,7 @@
 use std::{
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    pin::Pin,
+    simd::prelude::*,
     sync::{
         Arc,
         mpsc::{SyncSender, sync_channel},
@@ -17,7 +19,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub struct Pinned {
+    pub histories: [i8x64; 2],
+}
+
+#[derive(Debug, Clone)]
 pub struct Position {
+    pub pinned: Pin<Box<Pinned>>,
     pub stack: Vec<Frame>,
     pub index: usize,
     pub unplayable: bool,
@@ -31,6 +39,8 @@ impl Position {
 
 impl Default for Position {
     fn default() -> Self {
+        let mut pinned = Box::pin(Pinned { histories: [Simd::default(); 2] });
+        let histories = &mut pinned.as_mut().histories;
         Self {
             stack: (-1..416)
                 .map(|ply| Frame {
@@ -43,8 +53,10 @@ impl Default for Position {
                     psqt_value: 0,
                     ply,
                     killers: [0, 1],
+                    history: &mut histories[ply as usize & 1],
                 })
                 .collect(),
+            pinned,
             index: 1,
             unplayable: false,
         }
@@ -94,6 +106,10 @@ pub fn start() -> SyncSender<Cmd> {
                             }
                             position.index += 1;
                         }
+                    }
+                    UserMsg::Debug => {
+                        eprintln!("white histories {:?}", position.pinned.histories[0]);
+                        eprintln!("black histories {:?}", position.pinned.histories[1]);
                     }
                     UserMsg::Go(_) | UserMsg::Stop => unreachable!(),
                 },

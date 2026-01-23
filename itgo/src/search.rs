@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, panic::resume_unwind, sync::atomic};
+use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
 
 use multiptr::MultiMut;
 use myu_protocol::Limit;
@@ -49,7 +49,7 @@ pub fn search(
     depth -= 1;
     'moves: {
         macro_rules! try_mv {
-            ($mv:expr) => {
+            ($mv:expr, $on_cut:expr) => {
                 let mv = $mv;
                 let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
                 let value = if depth == 0 {
@@ -64,7 +64,7 @@ pub fn search(
                     best_mv = mv;
                     if value > alpha {
                         if value >= beta {
-                            break 'moves;
+                            $on_cut
                         }
                         alpha = value;
                     }
@@ -73,23 +73,49 @@ pub fn search(
         }
         let killer_0 = 1 << f.killers[0];
         if playable & killer_0 != 0 {
-            try_mv!(f.killers[0]);
+            try_mv!(f.killers[0], break 'moves);
         }
         let killer_1 = 1 << f.killers[1];
         if playable & killer_1 != 0 {
-            try_mv!(f.killers[1]);
+            try_mv!(f.killers[1], break 'moves);
         }
         let mut searched = killer_0 | killer_1;
         let mut mvs = makes_yugo & !searched;
         while mvs != 0 {
-            try_mv!(mvs.trailing_zeros() as u8);
+            try_mv!(mvs.trailing_zeros() as u8, break 'moves);
             mvs &= mvs - 1;
         }
         searched |= makes_yugo;
         let mut mvs = playable & !searched;
+        if depth == 0 {
+            while mvs != 0 {
+                try_mv!(mvs.trailing_zeros() as u8, break 'moves);
+                mvs &= mvs - 1;
+            }
+            break 'moves;
+        }
+        let mut failed = 0u64;
+        let scores = unsafe { *f.history };
         while mvs != 0 {
-            try_mv!(mvs.trailing_zeros() as u8);
-            mvs &= mvs - 1;
+            let scores = Mask::from_bitmask(mvs).select(scores, Simd::splat(i8::MIN));
+            let mv = Simd::splat(scores.reduce_max()).simd_eq(scores).to_bitmask().trailing_zeros() as u8;
+            try_mv!(mv, {
+                let history = unsafe { &mut *f.history };
+                const HIST_BITS: u32 = 6;
+                let bonus = (depth * depth).min(1 << HIST_BITS) as i32;
+                fn update(entry: &mut i8, direction: i32, change: i32) {
+                    *entry += (direction * change - ((*entry as i32 * change) >> HIST_BITS)) as i8;
+                }
+                update(&mut history[mv as usize], 1, bonus);
+                while failed != 0 {
+                    let mv = failed.trailing_zeros() as u8;
+                    update(&mut history[mv as usize], -1, bonus / 2);
+                    failed &= failed - 1;
+                }
+                break 'moves;
+            });
+            failed |= 1 << mv;
+            mvs &= !(1 << mv);
         }
     }
     if best_value >= beta {

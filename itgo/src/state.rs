@@ -118,6 +118,7 @@ pub struct Frame {
     pub psqt_value: i32,
     pub ply: i32,
     pub killers: [u8; 2],
+    pub history: *mut i8x64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

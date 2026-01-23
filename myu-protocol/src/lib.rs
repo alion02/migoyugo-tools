@@ -61,6 +61,8 @@ pub enum UserMsg {
     Go(Vec<Limit>),
     /// Stops the ongoing search immediately.
     Stop,
+    /// Requests that the engine print debug information to stderr.
+    Debug,
 }
 
 /// A wrapper around `myu_core::Sq` representing a square on the board.

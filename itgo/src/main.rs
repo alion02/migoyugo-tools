@@ -41,7 +41,7 @@ fn main() {
         let forward = |msg| cmd_tx.send(Cmd::Msg(msg)).unwrap();
         match deserialize(&msg) {
             Ok(msg) => match msg {
-                UserMsg::Reset | UserMsg::Undo(_) | UserMsg::Play(_) => {
+                UserMsg::Reset | UserMsg::Undo(_) | UserMsg::Play(_) | UserMsg::Debug => {
                     stop();
                     forward(msg);
                 }
