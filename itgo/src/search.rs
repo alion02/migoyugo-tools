@@ -53,6 +53,7 @@ pub fn search(
                 let mv = $mv;
                 let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
                 let value = if depth == 0 {
+                    thread.evals += 1;
                     new.score * 20 + new.psqt_value
                 } else {
                     let f = f + 1;

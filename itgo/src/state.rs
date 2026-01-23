@@ -89,12 +89,13 @@ impl Global {
 pub struct Thread {
     pub nodes: u64,
     pub node_limit: u64,
+    pub evals: u64,
     countdown: Wrapping<u32>,
 }
 
 impl Thread {
     pub fn new(node_limit: u64) -> Self {
-        Self { nodes: 0, node_limit, countdown: Wrapping(1) }
+        Self { nodes: 0, node_limit, evals: 0, countdown: Wrapping(1) }
     }
 
     pub fn tick_countdown(&mut self) -> bool {

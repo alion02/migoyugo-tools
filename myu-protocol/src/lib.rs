@@ -26,12 +26,16 @@ pub enum EngineMsg {
         eval: Eval,
         /// The depth of the search.
         depth: u32,
-        /// The number of nodes searched.
-        nodes: u64,
         /// The time elapsed in milliseconds.
         time: u64,
+        /// The number of nodes searched.
+        nodes: u64,
         /// Kilo-nodes per second.
         knps: u64,
+        /// The number of evaluations performed.
+        evals: u64,
+        /// Kilo-evals per second.
+        keps: u64,
     },
     /// The best move found by the search.
     /// `None` if no move is available (e.g., in a terminal state).

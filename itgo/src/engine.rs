@@ -138,10 +138,21 @@ pub fn start() -> SyncSender<Cmd> {
                             Ok((eval, mv)) => {
                                 best = Sq::from_raw(mv);
                                 let eval = Eval::Score(eval); // TODO: convert properly
-                                let nodes = thread.nodes;
                                 let time = global.elapsed();
+                                let nodes = thread.nodes;
                                 let knps = if time == 0 { nodes } else { nodes / time };
-                                send(&EngineMsg::Info { pv: vec![best.unwrap()], eval, depth, nodes, time, knps });
+                                let evals = thread.evals;
+                                let keps = if time == 0 { evals } else { evals / time };
+                                send(&EngineMsg::Info {
+                                    pv: vec![best.unwrap()],
+                                    eval,
+                                    depth,
+                                    time,
+                                    nodes,
+                                    knps,
+                                    evals,
+                                    keps,
+                                });
                             }
                             Err(e) => {
                                 if e.downcast_ref::<ExitSearch>().is_none() {
