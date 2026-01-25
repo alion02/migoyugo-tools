@@ -66,6 +66,8 @@ impl Default for Position {
 pub enum Cmd {
     Msg(UserMsg),
     Start(Arc<Global>),
+    Reset,
+    Go,
 }
 
 pub fn start() -> SyncSender<Cmd> {

@@ -7,17 +7,20 @@
 use std::{
     borrow::Cow,
     io::stdin,
-    sync::{Arc, atomic, mpsc::channel},
+    sync::{Arc, RwLock, atomic, mpsc::channel},
     thread::spawn,
     time::Instant,
 };
 
 use myu_protocol::{EngineMsg, UserMsg, deserialize, serialize};
 
-use crate::{engine::Cmd, state::Global};
+use crate::{engine::Cmd, limits::Limits, shared::Shared, state::Global};
 
 pub mod engine;
+pub mod game;
+pub mod limits;
 pub mod search;
+pub mod shared;
 pub mod state;
 
 fn main() {
@@ -32,6 +35,44 @@ fn main() {
     });
     let Ok(mut msg) = line_rx.recv() else { return };
     let cmd_tx = engine::start();
+    let shared: Arc<RwLock<Shared>> = Default::default();
+    loop {
+        let stop = |shared: &RwLock<Shared>| shared.read().unwrap().set_active(true);
+        match deserialize(&msg) {
+            Ok(msg) => match msg {
+                UserMsg::Reset => {
+                    stop(&shared);
+                    cmd_tx.send(Cmd::Reset).unwrap();
+                    shared.write().unwrap().game.reset();
+                }
+                UserMsg::Sync => todo!(),
+                UserMsg::Undo(count) => {
+                    stop(&shared);
+                    shared.write().unwrap().game.undo(count);
+                }
+                UserMsg::Play(mvs) => {
+                    stop(&shared);
+                    shared.write().unwrap().game.play(&mvs);
+                }
+                UserMsg::Go(limits) => {
+                    let started_at = Instant::now();
+                    stop(&shared);
+                    shared.write().unwrap().go(started_at, Limits::new(limits));
+                    cmd_tx.send(Cmd::Go).unwrap();
+                }
+                UserMsg::Stop => {
+                    stop(&shared);
+                }
+                UserMsg::Debug => {
+                    stop(&shared);
+                    todo!();
+                }
+            },
+            Err(e) => send_error(e.to_string()),
+        }
+        let Ok(next) = line_rx.recv() else { return };
+        msg = next;
+    }
     let mut global: Option<Arc<Global>> = None;
     loop {
         let stop = || {
