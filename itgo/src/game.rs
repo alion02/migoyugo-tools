@@ -40,10 +40,6 @@ impl Game {
         unsafe { MultiMut::from_slice_index(&mut self.stack, self.index) }
     }
 
-    pub fn reset(&mut self) {
-        self.index = LOOKBEHIND;
-    }
-
     pub fn play(&mut self, mvs: &[Sq]) -> Result<(), &'static str> {
         let index = self.index;
         let err = 'update: {
@@ -71,6 +67,10 @@ impl Game {
         }
         self.index -= count;
         Ok(())
+    }
+
+    pub fn reset(&mut self) {
+        self.index = LOOKBEHIND;
     }
 }
 

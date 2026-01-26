@@ -67,7 +67,9 @@ pub enum Cmd {
     Msg(UserMsg),
     Start(Arc<Global>),
     Reset,
+    Sync,
     Go,
+    Debug,
 }
 
 pub fn start() -> SyncSender<Cmd> {

@@ -14,11 +14,18 @@ use std::{
 
 use myu_protocol::{EngineMsg, UserMsg, deserialize, serialize};
 
-use crate::{engine::Cmd, limits::Limits, shared::Shared, state::Global};
+use crate::{
+    engine::Cmd,
+    limits::Limits,
+    options::{BlockingCommand, Options},
+    shared::Shared,
+    state::Global,
+};
 
 pub mod engine;
 pub mod game;
 pub mod limits;
+pub mod options;
 pub mod search;
 pub mod shared;
 pub mod state;
@@ -35,37 +42,56 @@ fn main() {
     });
     let Ok(mut msg) = line_rx.recv() else { return };
     let cmd_tx = engine::start();
-    let shared: Arc<RwLock<Shared>> = Default::default();
+    let shared = Arc::<RwLock<Shared>>::default();
+    let mut options = Options::default();
     loop {
-        let stop = |shared: &RwLock<Shared>| shared.read().unwrap().set_active(true);
+        let stop = || shared.read().unwrap().set_active(false);
+        let handle_active = || {
+            if shared.read().unwrap().active() {
+                match options.blocking_command {
+                    BlockingCommand::Warn => {
+                        send_warn("Received blocking command while searching, waiting until search naturally finishes");
+                    }
+                    BlockingCommand::Allow => (),
+                    BlockingCommand::Stop => stop(),
+                }
+            }
+        };
         match deserialize(&msg) {
             Ok(msg) => match msg {
+                UserMsg::Play(mvs) => {
+                    handle_active();
+                    shared.write().unwrap().game.play(&mvs);
+                }
+                UserMsg::Undo(count) => {
+                    handle_active();
+                    shared.write().unwrap().game.undo(count);
+                }
+                // TODO: Moves, Pos
                 UserMsg::Reset => {
-                    stop(&shared);
+                    handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
                     shared.write().unwrap().game.reset();
                 }
-                UserMsg::Sync => todo!(),
-                UserMsg::Undo(count) => {
-                    stop(&shared);
-                    shared.write().unwrap().game.undo(count);
-                }
-                UserMsg::Play(mvs) => {
-                    stop(&shared);
-                    shared.write().unwrap().game.play(&mvs);
+                UserMsg::Sync => {
+                    if shared.read().unwrap().active() {
+                        // engine thread is not searching right now, but it might be doing other things
+                        // rendezvous with it (0 capacity channel enforces synchronous handshake behavior)
+                        cmd_tx.send(Cmd::Sync);
+                    }
+                    send(&EngineMsg::Ready);
                 }
                 UserMsg::Go(limits) => {
-                    let started_at = Instant::now();
-                    stop(&shared);
-                    shared.write().unwrap().go(started_at, Limits::new(limits));
+                    handle_active();
+                    shared.write().unwrap().go(Instant::now(), Limits::new(limits));
                     cmd_tx.send(Cmd::Go).unwrap();
                 }
                 UserMsg::Stop => {
-                    stop(&shared);
+                    stop();
                 }
                 UserMsg::Debug => {
-                    stop(&shared);
-                    todo!();
+                    handle_active();
+                    cmd_tx.send(Cmd::Debug).unwrap();
                 }
             },
             Err(e) => send_error(e.to_string()),
@@ -115,4 +141,9 @@ fn send(msg: &EngineMsg) {
 
 fn send_error(error: impl Into<Cow<'static, str>>) {
     send(&EngineMsg::Error(error.into()));
+}
+
+fn send_warn(warn: impl Into<Cow<'static, str>>) {
+    // TODO: ::Warn
+    send(&EngineMsg::Error(warn.into()));
 }

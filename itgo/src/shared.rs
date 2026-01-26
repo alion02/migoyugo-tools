@@ -19,8 +19,12 @@ impl Default for Shared {
 }
 
 impl Shared {
+    pub fn active(&self) -> bool {
+        self.active.load(atomic::Ordering::Relaxed)
+    }
+
     pub fn set_active(&self, value: bool) {
-        if self.active.load(atomic::Ordering::Relaxed) != value {
+        if self.active() != value {
             self.active.store(value, atomic::Ordering::Relaxed);
         }
     }
