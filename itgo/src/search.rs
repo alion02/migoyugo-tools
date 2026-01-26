@@ -115,7 +115,7 @@ pub fn search(
             try_mv!(mv, {
                 let history = unsafe { &mut *f.history };
                 const HIST_BITS: u32 = 6;
-                let bonus = (depth * depth).min(1 << HIST_BITS) as i32;
+                let bonus = ((depth + 1) * (depth + 1)).min(1 << HIST_BITS) as i32;
                 fn update(entry: &mut i8, direction: i32, change: i32) {
                     *entry += (direction * change - ((*entry as i32 * change) >> HIST_BITS)) as i8;
                 }
