@@ -1,16 +1,20 @@
-use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic};
+use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*};
 
 use multiptr::MultiMut;
-use myu_protocol::Limit;
 
-use crate::state::{Frame, GenMvData, Global, Thread, apply, gen_mv, make_migo, make_yugo};
+use crate::{
+    game::Frame,
+    shared::Shared,
+    state::{GenMvData, apply, gen_mv, make_migo, make_yugo},
+    thread::Thread,
+};
 
 pub const MAX_VALUE: i32 = 0x7FFF;
 
 pub struct ExitSearch;
 
 pub fn search(
-    global: &Global,
+    shared: &Shared,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
     mut depth: u32,
@@ -18,12 +22,9 @@ pub fn search(
     beta: i32,
 ) -> (i32, u8) {
     if thread.tick_countdown() {
-        if global.stop.load(atomic::Ordering::Relaxed)
-            || global.limits.iter().any(|&limit| match limit {
-                Limit::Depth(_) => false,
-                Limit::Nodes(nodes) => thread.nodes >= nodes,
-                Limit::Ms(ms) => global.elapsed() >= ms,
-            })
+        if !shared.active()
+            || thread.nodes >= shared.limits.nodes
+            || shared.started_at.elapsed().as_millis() >= shared.limits.ms as u128
         {
             resume_unwind(Box::new(ExitSearch));
         }
@@ -58,7 +59,7 @@ pub fn search(
                 } else {
                     let f = f + 1;
                     apply(f, new, depth >= 2);
-                    -search(global, thread, f, depth, -beta, -alpha).0
+                    -search(shared, thread, f, depth, -beta, -alpha).0
                 };
                 if value > best_value {
                     best_value = value;

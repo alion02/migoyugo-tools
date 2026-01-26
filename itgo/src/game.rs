@@ -4,7 +4,7 @@ use multiptr::MultiMut;
 use myu_protocol::Sq;
 
 const LOOKBEHIND: usize = 1;
-const LOOKAHEAD: usize = 1;
+const LOOKAHEAD: usize = 0;
 const MAX_LEN: usize = 64 * (4 * 3 + 1); // upper bound assuming board fill with inefficient quad-yugos
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,12 @@ pub struct Game {
 
 impl Default for Game {
     fn default() -> Self {
+        Self::new([null_mut(); 2])
+    }
+}
+
+impl Game {
+    pub fn new(histories: [*mut i8x64; 2]) -> Self {
         Self {
             stack: (-(LOOKBEHIND as i32)..(MAX_LEN + LOOKAHEAD) as i32)
                 .map(|ply| Frame {
@@ -27,15 +33,13 @@ impl Default for Game {
                     psqt_value: 0,
                     ply,
                     killers: [0, 1],
-                    history: null_mut(),
+                    history: histories[ply as usize & 1],
                 })
                 .collect(),
             index: LOOKBEHIND,
         }
     }
-}
 
-impl Game {
     pub fn frame_ptr(&mut self) -> MultiMut<'_, Frame> {
         unsafe { MultiMut::from_slice_index(&mut self.stack, self.index) }
     }
@@ -72,6 +76,26 @@ impl Game {
     pub fn reset(&mut self) {
         self.index = LOOKBEHIND;
     }
+
+    pub fn sync_with(&mut self, game: &Game) {
+        self.index = game.index;
+        for i in self.index - LOOKBEHIND..self.index + LOOKAHEAD + 1 {
+            let this = &mut self.stack[i];
+            let other = game.stack[i];
+            *this = Frame {
+                opp_migo: other.opp_migo,
+                opp_yugo: other.opp_yugo,
+                opp_makes_yugo: other.opp_makes_yugo,
+                opp_makes_igo: other.opp_makes_igo,
+                opp_too_long: other.opp_too_long,
+                score: other.score,
+                psqt_value: other.psqt_value,
+                ply: this.ply,
+                killers: this.killers,
+                history: this.history,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,3 +111,6 @@ pub struct Frame {
     pub killers: [u8; 2],
     pub history: *mut i8x64,
 }
+
+unsafe impl Send for Frame {}
+unsafe impl Sync for Frame {}

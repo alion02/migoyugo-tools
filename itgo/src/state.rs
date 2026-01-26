@@ -1,10 +1,8 @@
-use std::{
-    arch::x86_64::_mm256_movemask_pd, mem::transmute, num::Wrapping, simd::prelude::*, sync::atomic::AtomicBool,
-    time::Instant,
-};
+use std::{arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*};
 
 use multiptr::MultiMut;
-use myu_protocol::Limit;
+
+use crate::game::Frame;
 
 pub static DIRS: [u64x4; 8] = {
     let mut simd_dirs = [[0u64; 4]; 8];
@@ -73,54 +71,6 @@ const fn to_symmetrical<T: Copy>(v: [T; 10]) -> [T; 64] {
 pub static PSQT_MIGO: [i32; 64] = to_symmetrical([2, 3, 4, 6, 6, 7, 9, 12, 11, 5]);
 
 pub static PSQT_YUGO: [i32; 64] = to_symmetrical([50, 52, 54, 56, 59, 61, 61, 65, 65, 70]);
-
-pub struct Global {
-    pub started_at: Instant,
-    pub stop: AtomicBool,
-    pub limits: Vec<Limit>,
-}
-
-impl Global {
-    pub fn elapsed(&self) -> u64 {
-        self.started_at.elapsed().as_millis() as u64
-    }
-}
-
-pub struct Thread {
-    pub nodes: u64,
-    pub node_limit: u64,
-    pub evals: u64,
-    countdown: Wrapping<u32>,
-}
-
-impl Thread {
-    pub fn new(node_limit: u64) -> Self {
-        Self { nodes: 0, node_limit, evals: 0, countdown: Wrapping(1) }
-    }
-
-    pub fn tick_countdown(&mut self) -> bool {
-        self.countdown -= 1;
-        self.countdown.0 == 0
-    }
-
-    pub fn reset_countdown(&mut self) {
-        self.countdown.0 = (self.node_limit - self.nodes).min(8192) as u32;
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Frame {
-    pub opp_migo: u64,
-    pub opp_yugo: u64,
-    pub opp_makes_yugo: u64,
-    pub opp_makes_igo: u64,
-    pub opp_too_long: u64,
-    pub score: i32,
-    pub psqt_value: i32,
-    pub ply: i32,
-    pub killers: [u8; 2],
-    pub history: *mut i8x64,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MakeResult {
