@@ -3,9 +3,11 @@ use std::{ptr::null_mut, simd::prelude::*};
 use multiptr::MultiMut;
 use myu_protocol::Sq;
 
+use crate::state::{DirectMakeResult, checked_direct_make};
+
 const LOOKBEHIND: usize = 1;
 const LOOKAHEAD: usize = 0;
-const MAX_LEN: usize = 64 * (4 * 3 + 1); // upper bound assuming board fill with inefficient quad-yugos
+pub const MAX_LEN: usize = 64 * (4 * 3 + 1); // upper bound assuming board fill with inefficient quad-yugos
 
 #[derive(Debug, Clone)]
 pub struct Game {
@@ -48,15 +50,12 @@ impl Game {
         let index = self.index;
         let err = 'update: {
             for mv in mvs {
-                todo!(); // checked_apply
-                // if self.is_over() {
-                //     break 'update "Move sequence extends past the end of the game, cancelling";
-                // }
-                // match gen_mv(f).make(f, mv.raw()) {
-                //     MakeResult::Ok(data) => apply(f + 1, data, true),
-                //     MakeResult::Illegal => break 'update "Sequence contains illegal move(s), cancelling",
-                //     MakeResult::Igo => self.unplayable = true,
-                // }
+                match checked_direct_make(self.frame_ptr(), mv.raw()) {
+                    DirectMakeResult::Ok => (),
+                    DirectMakeResult::Igo => break 'update "Move sequence extends past Igo, cancelling",
+                    DirectMakeResult::Wego => break 'update "Move sequence extends past Wego, cancelling",
+                    DirectMakeResult::Illegal => break 'update "Sequence contains illegal move(s), cancelling",
+                }
                 self.index += 1;
             }
             return Ok(());

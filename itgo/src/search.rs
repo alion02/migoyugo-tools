@@ -1,15 +1,26 @@
 use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*};
 
 use multiptr::MultiMut;
+use myu_protocol::Eval;
 
 use crate::{
-    game::Frame,
+    game::{Frame, MAX_LEN},
     shared::Shared,
     state::{GenMvData, apply, gen_mv, make_migo, make_yugo},
     thread::Thread,
 };
 
 pub const MAX_VALUE: i32 = 0x7FFF;
+pub const DECISIVE: i32 = MAX_VALUE - MAX_LEN as i32;
+
+pub fn convert_eval(f: MultiMut<Frame>, eval: i32) -> Eval {
+    if eval.abs() < DECISIVE {
+        Eval::Score(eval)
+    } else {
+        let distance = (MAX_VALUE - eval.abs()) - f.ply;
+        Eval::Decisive(eval.signum() * distance)
+    }
+}
 
 pub struct ExitSearch;
 

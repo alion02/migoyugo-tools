@@ -118,9 +118,9 @@ impl From<Sq> for String {
 /// Evaluation score.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Eval {
-    /// A regular score in engine-defined abstract unit.
+    /// A regular score in engine-defined abstract units.
     Score(i32),
-    /// A decisive score (mate or forced win/loss).
+    /// A decisive score (forced win/loss).
     /// The value indicates the distance to the end in plies.
     /// Positive for win, negative for loss.
     Decisive(i32),

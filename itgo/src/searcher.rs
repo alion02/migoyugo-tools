@@ -9,11 +9,11 @@ use std::{
     thread::spawn,
 };
 
-use myu_protocol::{EngineMsg, Eval, Sq};
+use myu_protocol::{EngineMsg, Sq};
 
 use crate::{
     game::Game,
-    search::{ExitSearch, search},
+    search::{ExitSearch, convert_eval, search},
     send, send_error,
     shared::Shared,
     thread::Thread,
@@ -51,7 +51,7 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                         match result {
                             Ok((eval, mv)) => {
                                 best = Sq::from_raw(mv);
-                                let eval = Eval::Score(eval); // TODO: convert properly
+                                let eval = convert_eval(f, eval);
                                 let time_ns = shared.started_at.elapsed().as_nanos().max(1);
                                 let time = (time_ns / 1_000_000) as u64;
                                 let nodes = thread.nodes;
