@@ -37,6 +37,7 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                     for vec in &mut histories {
                         *vec = Simd::default();
                     }
+                    game.searcher_reset();
                 }
                 Cmd::Sync => { /* rendezvous with main thread */ }
                 Cmd::Go => {

@@ -76,6 +76,12 @@ impl Game {
         self.index = LOOKBEHIND;
     }
 
+    pub fn searcher_reset(&mut self) {
+        for frame in &mut self.stack {
+            frame.killers = [0, 1];
+        }
+    }
+
     pub fn sync_with(&mut self, game: &Game) {
         self.index = game.index;
         for i in self.index - LOOKBEHIND..self.index + LOOKAHEAD + 1 {
