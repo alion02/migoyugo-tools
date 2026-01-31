@@ -73,7 +73,7 @@ pub struct Engine {
     path: PathBuf,
     child: Child,
     stdin: BufWriter<ChildStdin>,
-    msg_rx: Receiver<Result<EngineMsg, String>>,
+    msg_rx: Receiver<Result<(EngineMsg, String), String>>,
     _reader_thread: JoinHandle<()>,
     logs_dir: Option<PathBuf>,
     log: Vec<LogEntry>,
@@ -129,7 +129,7 @@ impl Engine {
                         }
                         match deserialize::<EngineMsg>(trimmed) {
                             Ok(msg) => {
-                                if msg_tx.send(Ok(msg)).is_err() {
+                                if msg_tx.send(Ok((msg, trimmed.to_string()))).is_err() {
                                     break;
                                 }
                             }
@@ -172,15 +172,15 @@ impl Engine {
     fn wait_for_id(&mut self) -> Result<(), String> {
         // Engines should send Id message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok(msg @ EngineMsg::Id { .. })) => {
+            Ok(Ok((msg @ EngineMsg::Id { .. }, raw))) => {
                 if let EngineMsg::Id { name, .. } = &msg {
                     self.engine_name = name.as_ref().map(|s| s.to_string());
                 }
-                self.log_received(&msg);
+                self.log_received(&raw);
                 Ok(())
             }
-            Ok(Ok(msg)) => {
-                self.log_received(&msg);
+            Ok(Ok((msg, raw))) => {
+                self.log_received(&raw);
                 Err(format!("Engine {} sent {:?} instead of Id", self.name, msg))
             }
             Ok(Err(e)) => Err(e),
@@ -197,12 +197,8 @@ impl Engine {
         });
     }
 
-    fn log_received(&mut self, msg: &EngineMsg) {
-        let content = match serialize(msg) {
-            Ok(s) => s,
-            Err(e) => format!("Serialization error: {e} ({:?})", msg),
-        };
-        self.log(LogDirection::Received, &content);
+    fn log_received(&mut self, content: &str) {
+        self.log(LogDirection::Received, content);
     }
 
     /// Write the communication log to the logs directory
@@ -239,8 +235,8 @@ impl Engine {
 
     fn recv_message_timeout(&mut self, timeout: Duration) -> Result<Option<EngineMsg>, String> {
         match self.msg_rx.recv_timeout(timeout) {
-            Ok(Ok(msg)) => {
-                self.log_received(&msg);
+            Ok(Ok((msg, raw))) => {
+                self.log_received(&raw);
                 Ok(Some(msg))
             }
             Ok(Err(e)) => Err(e),
