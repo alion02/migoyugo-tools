@@ -7,6 +7,7 @@
 pub mod game;
 pub mod limits;
 pub mod options;
+pub mod protocol;
 pub mod search;
 pub mod searcher;
 pub mod shared;
@@ -21,11 +22,10 @@ use std::{
     time::Instant,
 };
 
-use myu_protocol::{EngineMsg, UserMsg, deserialize, serialize};
-
 use crate::{
     limits::Limits,
     options::{BlockingCommand, Options},
+    protocol::{EngineMsg, UserMsg, deserialize, serialize},
     searcher::Cmd,
     shared::Shared,
 };

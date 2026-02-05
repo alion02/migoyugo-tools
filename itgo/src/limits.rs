@@ -1,4 +1,4 @@
-use myu_protocol::Limit;
+use crate::protocol::Limit;
 
 pub struct Limits {
     pub depth: u32,

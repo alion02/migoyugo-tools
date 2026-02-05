@@ -1,10 +1,10 @@
 use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*};
 
 use multiptr::MultiMut;
-use myu_protocol::Eval;
 
 use crate::{
     game::{Frame, MAX_LEN},
+    protocol::Eval,
     shared::Shared,
     state::{GenMvData, apply, gen_mv, make_migo, make_yugo},
     thread::Thread,
