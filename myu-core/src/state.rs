@@ -376,20 +376,19 @@ pub fn parse_state(s: &str) -> Result<State, ParseStateError> {
 
 /// Format state to FEN-like string.
 pub fn format_state(state: &State) -> String {
-    let mut rows = Vec::with_capacity(8);
+    let mut s = String::with_capacity(64);
 
     for rank in (0..8).rev() {
-        let mut row = String::new();
         let mut empty_count = 0u8;
 
         for col in 0..8 {
             let sq = Sq::from_col_row(col, rank).unwrap();
             if let Some(piece) = state.at(sq) {
                 if empty_count > 0 {
-                    row.push((b'0' + empty_count) as char);
+                    s.push((b'0' + empty_count) as char);
                     empty_count = 0;
                 }
-                row.push(match (piece.kind, piece.color) {
+                s.push(match (piece.kind, piece.color) {
                     (PieceKind::Migo, Color::White) => 'w',
                     (PieceKind::Migo, Color::Black) => 'b',
                     (PieceKind::Yugo, Color::White) => 'W',
@@ -401,18 +400,23 @@ pub fn format_state(state: &State) -> String {
         }
 
         if empty_count > 0 {
-            row.push((b'0' + empty_count) as char);
+            s.push((b'0' + empty_count) as char);
         }
-        rows.push(row);
+
+        if rank > 0 {
+            s.push('/');
+        }
     }
 
-    let board = rows.join("/");
     let side = match state.side_to_move {
-        Color::White => "w",
-        Color::Black => "b",
+        Color::White => 'w',
+        Color::Black => 'b',
     };
 
-    format!("{board} {side} {} {}", state.white_score, state.black_score)
+    use std::fmt::Write;
+    let _ = write!(s, " {} {} {}", side, state.white_score, state.black_score);
+
+    s
 }
 
 #[cfg(test)]
