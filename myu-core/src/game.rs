@@ -266,7 +266,8 @@ pub fn format_game(game: &Game, fmt: &PgnFormat, include_result: bool, include_r
             if !result.is_empty() {
                 result.push_str(separator);
             }
-            result.push_str(&format!("{move_num}. "));
+            use std::fmt::Write;
+            write!(result, "{move_num}. ").unwrap();
         } else if !result.is_empty() && !result.ends_with('\n') {
             result.push(' ');
         }

@@ -5,3 +5,10 @@ edition = "2024"
 
 [dependencies]
 thiserror = { version = "2.0.17", default-features = false }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "pgn_bench"
+harness = false
