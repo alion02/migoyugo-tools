@@ -3,20 +3,21 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use erased_serde::Serialize as SerializeDyn;
 use serde::{Deserialize, Serialize};
 pub use serde_json::{from_str as deserialize, to_string as serialize};
 
 /// Messages sent from the engine to the user/GUI.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EngineMsg {
     /// Sent at startup to identify the engine.
-    Id {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<Cow<'static, str>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        author: Option<Cow<'static, str>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        version: Option<Cow<'static, str>>,
+    About {
+        name: &'static str,
+        author: &'static str,
+        version: &'static str,
+        settings: &'static [Setting],
+        features: &'static [&'static str],
     },
     /// Acknowledgment sent in response to a `UserMsg::Sync` message.
     /// Indicates that the engine has processed all previous messages and is ready for new commands.
@@ -47,8 +48,17 @@ pub enum EngineMsg {
     Error(Cow<'static, str>),
 }
 
+/// Messages sent from the engine to the user/GUI.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct Setting {
+    name: &'static str,
+    default: &'static dyn SerializeDyn,
+}
+
 /// Messages sent from the user/GUI to the engine.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UserMsg {
     /// Resets the game state to the initial position.
     /// Stops any ongoing search.
@@ -137,6 +147,7 @@ impl Display for ParseMvError {
 
 /// Evaluation score.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Eval {
     /// A regular score in engine-defined abstract units.
     Score(i32),
@@ -148,6 +159,7 @@ pub enum Eval {
 
 /// Search limits.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Limit {
     /// Search to a fixed depth.
     Depth(u32),

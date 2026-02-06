@@ -31,7 +31,13 @@ use crate::{
 };
 
 fn main() {
-    send(&EngineMsg::Id { name: Some("Itgo".into()), author: None, version: None });
+    send(&EngineMsg::About {
+        name: "Itgo",
+        author: "alion02",
+        version: env!("VERGEN_GIT_DESCRIBE"),
+        settings: &[],
+        features: &[],
+    });
     let (line_tx, line_rx) = channel();
     spawn(move || {
         for line in stdin().lines().map_while(Result::ok) {
