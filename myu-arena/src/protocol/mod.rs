@@ -13,16 +13,8 @@ use crate::protocol::{limits::Limits, mv::Mv};
 
 /// Message sent from the engine to the arena.
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum EngineMsg {
-    Known(KnownEngineMsg),
-    Unknown(#[allow(dead_code)] serde_json::Value),
-}
-
-/// Known message types sent from the engine to the arena.
-#[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum KnownEngineMsg {
+pub enum EngineMsg {
     /// Sent at startup to identify the engine.
     About {
         name: Option<String>,
@@ -33,6 +25,9 @@ pub enum KnownEngineMsg {
     Best(Option<Mv>),
     /// An error message.
     Error(String),
+    /// Any other message type.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Message sent from the arena to the engine.

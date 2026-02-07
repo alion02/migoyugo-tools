@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::protocol::{EngineMsg, KnownEngineMsg, UserMsg, deserialize, limits::Limits, mv::Mv, serialize};
+use crate::protocol::{EngineMsg, UserMsg, deserialize, limits::Limits, mv::Mv, serialize};
 
 /// A communication log entry
 #[derive(Debug, Clone)]
@@ -172,8 +172,8 @@ impl Engine {
     fn wait_for_about(&mut self) -> Result<(), String> {
         // Engines should send About message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok((msg @ EngineMsg::Known(KnownEngineMsg::About { .. }), raw))) => {
-                if let EngineMsg::Known(KnownEngineMsg::About { name }) = msg {
+            Ok(Ok((msg @ EngineMsg::About { .. }, raw))) => {
+                if let EngineMsg::About { name } = msg {
                     self.engine_name = name;
                 }
                 self.log_received(&raw);
@@ -270,8 +270,8 @@ impl Engine {
                 return Err(format!("Engine {} did not respond to Sync", self.name));
             }
             match self.recv_message_timeout(remaining)? {
-                Some(EngineMsg::Known(KnownEngineMsg::Ready)) => return Ok(()),
-                Some(EngineMsg::Known(KnownEngineMsg::Error(e))) => {
+                Some(EngineMsg::Ready) => return Ok(()),
+                Some(EngineMsg::Error(e)) => {
                     eprintln!("[{}] Engine error: {}", self.name, e);
                     // Continue waiting for Ready
                 }
@@ -307,17 +307,17 @@ impl Engine {
 
             match self.recv_message_timeout(remaining) {
                 Ok(Some(msg)) => match msg {
-                    EngineMsg::Known(KnownEngineMsg::Best(Some(sq))) => return MoveResult::Move(sq),
-                    EngineMsg::Known(KnownEngineMsg::Best(None)) => return MoveResult::NoMove,
-                    EngineMsg::Known(KnownEngineMsg::Error(e)) => {
+                    EngineMsg::Best(Some(sq)) => return MoveResult::Move(sq),
+                    EngineMsg::Best(None) => return MoveResult::NoMove,
+                    EngineMsg::Error(e) => {
                         eprintln!("[{}] Engine error: {}", self.name, e);
                         // Don't treat error messages as fatal, continue waiting
                     }
-                    EngineMsg::Known(KnownEngineMsg::About { .. })
-                    | EngineMsg::Known(KnownEngineMsg::Ready) => {
+                    EngineMsg::About { .. }
+                    | EngineMsg::Ready => {
                         // Unexpected but not fatal
                     }
-                    EngineMsg::Unknown(_) => {
+                    EngineMsg::Unknown => {
                         // Ignore opaque unknown messages
                     }
                 },
