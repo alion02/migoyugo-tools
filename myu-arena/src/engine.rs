@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use myu_protocol::{EngineMsg, Limit, Sq, UserMsg, deserialize, serialize};
+use crate::protocol::{EngineMsg, UserMsg, deserialize, limits::Limits, mv::Mv, serialize};
 
 /// A communication log entry
 #[derive(Debug, Clone)]
@@ -56,7 +56,7 @@ impl LogReason {
 /// Result of waiting for a move from the engine
 #[derive(Debug)]
 pub enum MoveResult {
-    Move(Sq),
+    Move(Mv),
     NoMove, // Engine returned None (shouldn't happen in normal play)
     Timeout,
     Crash,
@@ -164,27 +164,27 @@ impl Engine {
         };
 
         // Wait for engine identification
-        engine.wait_for_id()?;
+        engine.wait_for_about()?;
 
         Ok(engine)
     }
 
-    fn wait_for_id(&mut self) -> Result<(), String> {
-        // Engines should send Id message immediately on startup
+    fn wait_for_about(&mut self) -> Result<(), String> {
+        // Engines should send About message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok((msg @ EngineMsg::Id { .. }, raw))) => {
-                if let EngineMsg::Id { name, .. } = &msg {
-                    self.engine_name = name.as_ref().map(|s| s.to_string());
+            Ok(Ok((msg @ EngineMsg::About { .. }, raw))) => {
+                if let EngineMsg::About { name, .. } = msg {
+                    self.engine_name = name;
                 }
                 self.log_received(&raw);
                 Ok(())
             }
             Ok(Ok((msg, raw))) => {
                 self.log_received(&raw);
-                Err(format!("Engine {} sent {:?} instead of Id", self.name, msg))
+                Err(format!("Engine {} sent {:?} instead of About", self.name, msg))
             }
             Ok(Err(e)) => Err(e),
-            Err(RecvTimeoutError::Timeout) => Err(format!("Engine {} did not send Id message (timeout)", self.name)),
+            Err(RecvTimeoutError::Timeout) => Err(format!("Engine {} did not send About message (timeout)", self.name)),
             Err(RecvTimeoutError::Disconnected) => Err(format!("Engine {} reader disconnected", self.name)),
         }
     }
@@ -281,7 +281,7 @@ impl Engine {
     }
 
     /// Send Play command
-    pub fn play(&mut self, moves: Vec<Sq>) -> Result<(), String> {
+    pub fn play(&mut self, moves: Vec<Mv>) -> Result<(), String> {
         self.send_message(&UserMsg::Play(moves))
     }
 
@@ -290,7 +290,7 @@ impl Engine {
     /// `time_limit_ms` is the time limit given to the engine for its search.
     /// The function will wait up to `self.timeout_ms` (which includes leniency) for a response.
     pub fn go(&mut self, time_limit_ms: u64) -> MoveResult {
-        if let Err(_e) = self.send_message(&UserMsg::Go(vec![Limit::Ms(time_limit_ms)])) {
+        if let Err(_e) = self.send_message(&UserMsg::Go(Limits::time(time_limit_ms))) {
             self.write_log(LogReason::Crash);
             return MoveResult::Crash;
         }
@@ -314,7 +314,7 @@ impl Engine {
                         eprintln!("[{}] Engine error: {}", self.name, e);
                         // Don't treat error messages as fatal, continue waiting
                     }
-                    EngineMsg::Id { .. } | EngineMsg::Ready => {
+                    EngineMsg::About { .. } | EngineMsg::Ready | EngineMsg::Warn(_) => {
                         // Unexpected but not fatal
                     }
                 },

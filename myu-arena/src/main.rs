@@ -3,6 +3,7 @@ mod engine;
 mod gsprt;
 mod match_runner;
 mod opening_book;
+mod protocol;
 mod stats;
 
 use std::{

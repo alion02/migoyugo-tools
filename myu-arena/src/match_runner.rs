@@ -455,11 +455,9 @@ fn play_single_game(
 
     // Send opening moves to engines
     let mut game = Game::new();
-    let opening_sqs: Vec<_> = opening.iter().map(|mv| mv.sq.into()).collect();
-
-    if !opening_sqs.is_empty() {
-        _ = white.play(opening_sqs.clone());
-        _ = black.play(opening_sqs);
+    if !opening.is_empty() {
+        _ = white.play(opening.iter().map(|mv| mv.sq.into()).collect());
+        _ = black.play(opening.iter().map(|mv| mv.sq.into()).collect());
         for mv in opening {
             if game.play(*mv).is_err() {
                 break;
@@ -538,12 +536,12 @@ fn run_game_loop(
             if side_to_move == Color::White { (&mut *white, &mut *black) } else { (&mut *black, &mut *white) };
 
         match current.go(time_ms) {
-            MoveResult::Move(sq) => {
-                let mv = Mv::new(sq.into());
+            MoveResult::Move(proto_mv) => {
+                let mv = Mv::new(proto_mv.into());
                 match game.play(mv) {
                     Ok(()) => {
-                        _ = current.play(vec![sq]);
-                        _ = opponent.play(vec![sq]);
+                        _ = current.play(vec![proto_mv]);
+                        _ = opponent.play(vec![proto_mv]);
                     }
                     Err(e) => {
                         current.write_log(LogReason::IllegalMove);
