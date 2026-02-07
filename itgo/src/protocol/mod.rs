@@ -56,6 +56,8 @@ pub enum UserMsg {
     Play(Vec<Mv>),
     /// Undo the specified number of half-moves (plies).
     Undo(usize),
+    /// Discard all played moves and replace them with the sequence.
+    Moves(Vec<Mv>),
     /// Reset the game state to the initial position.
     Reset,
     /// Synchronization barrier.

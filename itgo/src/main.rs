@@ -78,7 +78,15 @@ fn main() {
                         send_error(e);
                     }
                 }
-                // TODO: Moves, Pos
+                UserMsg::Moves(mvs) => {
+                    handle_active();
+                    let mut shared = shared.write().unwrap();
+                    shared.game.undo_all();
+                    if let Err(e) = shared.game.play(&mvs) {
+                        send_error(e);
+                    }
+                }
+                // TODO: Pos
                 UserMsg::Reset => {
                     handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
@@ -101,6 +109,7 @@ fn main() {
                     stop();
                 }
                 UserMsg::Debug => {
+                    eprintln!("{settings:#?}");
                     handle_active();
                     cmd_tx.send(Cmd::Debug).unwrap();
                 }

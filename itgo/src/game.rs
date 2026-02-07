@@ -74,8 +74,12 @@ impl Game {
         Ok(())
     }
 
-    pub fn reset(&mut self) {
+    pub fn undo_all(&mut self) {
         self.index = LOOKBEHIND;
+    }
+
+    pub fn reset(&mut self) {
+        self.undo_all();
     }
 
     pub fn searcher_reset(&mut self) {
