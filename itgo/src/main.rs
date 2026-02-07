@@ -64,7 +64,10 @@ fn main() {
         match deserialize(&msg) {
             Ok(msg) => match msg {
                 UserMsg::Set(patch) => {
-                    settings.apply(patch);
+                    for (key, value) in patch.unknown.as_object().unwrap().into_iter() {
+                        send_warn(format!("Tried to set unknown key `{key}` to `{value}`"));
+                    }
+                    settings.apply(&patch);
                 }
                 UserMsg::Play(mvs) => {
                     handle_active();
