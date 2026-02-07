@@ -3,23 +3,16 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use erased_serde::Serialize as SerializeDyn;
 use serde::{Deserialize, Serialize};
 pub use serde_json::{from_str as deserialize, to_string as serialize};
 
-/// Messages sent from the engine to the user/GUI.
+/// Message sent from the engine to the user/harness.
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineMsg {
     /// Sent at startup to identify the engine.
-    About {
-        name: &'static str,
-        author: &'static str,
-        version: &'static str,
-        settings: &'static [Setting],
-        features: &'static [&'static str],
-    },
-    /// Acknowledgment sent in response to a `UserMsg::Sync` message.
+    About { name: &'static str, author: &'static str, version: &'static str, features: &'static [&'static str] },
+    /// Acknowledgment sent in response to a [`UserMsg::Sync`] message.
     /// Indicates that the engine has processed all previous messages and is ready for new commands.
     Ready,
     /// Information about the search progress.
@@ -44,41 +37,32 @@ pub enum EngineMsg {
     /// The best move found by the search.
     /// `None` if no move is available (e.g., in a terminal state).
     Best(Option<Mv>),
+    /// A warning message.
+    Warn(Cow<'static, str>),
     /// An error message.
     Error(Cow<'static, str>),
 }
 
-/// Messages sent from the engine to the user/GUI.
-#[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Setting {
-    name: &'static str,
-    default: &'static dyn SerializeDyn,
-}
-
-/// Messages sent from the user/GUI to the engine.
-#[derive(Debug, Serialize, Deserialize)]
+/// Message sent from the user/harness to the engine.
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UserMsg {
-    /// Resets the game state to the initial position.
-    /// Stops any ongoing search.
+    Play(Vec<Mv>),
+    /// Start a search with the given limits.
+    /// The engine may send `Info` messages during search and finally `Best` when done.
+    Undo(usize),
+    /// Play a sequence of moves on the current board.
+    /// Reset the game state to the initial position.
     Reset,
     /// Synchronization barrier.
     /// The engine must respond with `EngineMsg::Ready` when it has processed all previous messages.
     /// This is used to ensure that the engine is in a known state.
     Sync,
-    /// Undoes the specified number of half-moves (plies).
-    /// Stops any ongoing search.
-    Undo(usize),
-    /// Plays a sequence of moves on the current board.
-    /// Stops any ongoing search.
-    Play(Vec<Mv>),
-    /// Starts a search with the given limits.
-    /// The engine will send `Info` messages during the search and finally `Best` when done.
+    /// Undo the specified number of half-moves (plies).
     Go(Vec<Limit>),
-    /// Stops the ongoing search immediately.
+    /// Stop the ongoing search immediately.
     Stop,
-    /// Requests that the engine print debug information to stderr.
+    /// Request printing debug information to stderr.
     Debug,
 }
 
@@ -146,7 +130,7 @@ impl Display for ParseMvError {
 }
 
 /// Evaluation score.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Eval {
     /// A regular score in engine-defined abstract units.
@@ -157,8 +141,8 @@ pub enum Eval {
     Decisive(i32),
 }
 
-/// Search limits.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Search limit.
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Limit {
     /// Search to a fixed depth.
@@ -166,5 +150,5 @@ pub enum Limit {
     /// Search a fixed number of nodes.
     Nodes(u64),
     /// Search for a fixed amount of time (in milliseconds).
-    Ms(u64),
+    Time(u64),
 }

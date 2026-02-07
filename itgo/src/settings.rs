@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Options {
+pub struct Settings {
     pub blocking_command: BlockingCommand,
 }
 

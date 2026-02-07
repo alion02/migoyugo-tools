@@ -6,10 +6,10 @@
 
 pub mod game;
 pub mod limits;
-pub mod options;
 pub mod protocol;
 pub mod search;
 pub mod searcher;
+pub mod settings;
 pub mod shared;
 pub mod state;
 pub mod thread;
@@ -24,9 +24,9 @@ use std::{
 
 use crate::{
     limits::Limits,
-    options::{BlockingCommand, Options},
     protocol::{EngineMsg, UserMsg, deserialize, serialize},
     searcher::Cmd,
+    settings::{BlockingCommand, Settings},
     shared::Shared,
 };
 
@@ -35,8 +35,7 @@ fn main() {
         name: "Itgo",
         author: "alion02",
         version: env!("VERGEN_GIT_DESCRIBE"),
-        settings: &[],
-        features: &[],
+        features: &["interactive", "fixed_time", "fixed_nodes", "fixed_depth"],
     });
     let (line_tx, line_rx) = channel();
     spawn(move || {
@@ -49,12 +48,12 @@ fn main() {
     let Ok(mut msg) = line_rx.recv() else { return };
     let shared = Arc::<RwLock<Shared>>::default();
     let cmd_tx = searcher::start(shared.clone());
-    let mut options = Options::default();
+    let mut settings = Settings::default();
     loop {
         let stop = || shared.read().unwrap().set_active(false);
         let handle_active = || {
             if shared.read().unwrap().active() {
-                match options.blocking_command {
+                match settings.blocking_command {
                     BlockingCommand::Warn => {
                         send_warn("Received blocking command while searching, waiting until search naturally finishes");
                     }
@@ -115,11 +114,10 @@ fn send(msg: &EngineMsg) {
     println!("{}", serialize(msg).unwrap());
 }
 
-fn send_error(error: impl Into<Cow<'static, str>>) {
-    send(&EngineMsg::Error(error.into()));
+fn send_warn(warn: impl Into<Cow<'static, str>>) {
+    send(&EngineMsg::Warn(warn.into()));
 }
 
-fn send_warn(warn: impl Into<Cow<'static, str>>) {
-    // TODO: ::Warn
-    send(&EngineMsg::Error(warn.into()));
+fn send_error(error: impl Into<Cow<'static, str>>) {
+    send(&EngineMsg::Error(error.into()));
 }

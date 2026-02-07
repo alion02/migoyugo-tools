@@ -22,7 +22,7 @@ impl Limits {
             match limit {
                 Limit::Depth(value) => self.depth = self.depth.min(value),
                 Limit::Nodes(value) => self.nodes = self.nodes.min(value),
-                Limit::Ms(value) => self.ms = self.ms.min(value),
+                Limit::Time(value) => self.ms = self.ms.min(value),
             }
         }
         self
