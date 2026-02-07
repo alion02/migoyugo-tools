@@ -54,7 +54,10 @@ fn main() {
             if shared.read().unwrap().active() {
                 match settings.blocking_command {
                     BlockingCommand::Warn => {
-                        send_warn("Received blocking command while searching, waiting until search naturally finishes");
+                        send_warn(
+                            "Received blocking command while searching, waiting until search naturally finishes; \
+                             no commands will be processed until then",
+                        );
                     }
                     BlockingCommand::Allow => (),
                     BlockingCommand::Stop => stop(),
@@ -71,7 +74,7 @@ fn main() {
                 }
                 UserMsg::Play(mvs) => {
                     handle_active();
-                    if let Err(e) = shared.write().unwrap().game.play(&mvs) {
+                    if let Err(e) = shared.write().unwrap().game.play(&mvs, false) {
                         send_error(e);
                     }
                 }
@@ -83,9 +86,7 @@ fn main() {
                 }
                 UserMsg::Moves(mvs) => {
                     handle_active();
-                    let mut shared = shared.write().unwrap();
-                    shared.game.undo_all();
-                    if let Err(e) = shared.game.play(&mvs) {
+                    if let Err(e) = shared.write().unwrap().game.play(&mvs, false) {
                         send_error(e);
                     }
                 }
@@ -93,7 +94,7 @@ fn main() {
                 UserMsg::Reset => {
                     handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
-                    shared.write().unwrap().game.reset();
+                    shared.write().unwrap().game.undo_all();
                 }
                 UserMsg::Sync => {
                     if shared.read().unwrap().active() {
@@ -104,6 +105,7 @@ fn main() {
                     send(&EngineMsg::Ready);
                 }
                 UserMsg::Go(limits) => {
+                    // TODO: handle terminal states, requires minor refactor of terminal checking
                     handle_active();
                     shared.write().unwrap().go(Instant::now(), limits);
                     cmd_tx.send(Cmd::Go).unwrap();

@@ -48,9 +48,12 @@ impl Game {
         unsafe { MultiMut::from_slice_index(&mut self.stack, self.index) }
     }
 
-    pub fn play(&mut self, mvs: &[Mv]) -> Result<(), &'static str> {
+    pub fn play(&mut self, mvs: &[Mv], from_start: bool) -> Result<(), &'static str> {
         let index = self.index;
         let err = 'update: {
+            if from_start {
+                self.undo_all();
+            }
             for mv in mvs {
                 match checked_direct_make(self.frame_ptr(), mv.raw()) {
                     DirectMakeResult::Ok => (),
@@ -76,10 +79,6 @@ impl Game {
 
     pub fn undo_all(&mut self) {
         self.index = LOOKBEHIND;
-    }
-
-    pub fn reset(&mut self) {
-        self.undo_all();
     }
 
     pub fn searcher_reset(&mut self) {
