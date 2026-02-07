@@ -3,7 +3,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{game::Game, limits::Limits};
+use crate::{game::Game, protocol::limits::Limits};
 
 pub struct Shared {
     pub started_at: Instant,

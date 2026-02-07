@@ -3,7 +3,7 @@ use std::{ptr::null_mut, simd::prelude::*};
 use multiptr::MultiMut;
 
 use crate::{
-    protocol::Mv,
+    protocol::mv::Mv,
     state::{DirectMakeResult, checked_direct_make},
 };
 

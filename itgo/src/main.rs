@@ -5,11 +5,9 @@
 )]
 
 pub mod game;
-pub mod limits;
 pub mod protocol;
 pub mod search;
 pub mod searcher;
-pub mod settings;
 pub mod shared;
 pub mod state;
 pub mod thread;
@@ -23,10 +21,11 @@ use std::{
 };
 
 use crate::{
-    limits::Limits,
-    protocol::{EngineMsg, UserMsg, deserialize, serialize},
+    protocol::{
+        EngineMsg, UserMsg, deserialize, serialize,
+        settings::{BlockingCommand, Settings},
+    },
     searcher::Cmd,
-    settings::{BlockingCommand, Settings},
     shared::Shared,
 };
 
@@ -64,6 +63,9 @@ fn main() {
         };
         match deserialize(&msg) {
             Ok(msg) => match msg {
+                UserMsg::Set(patch) => {
+                    settings.apply(patch);
+                }
                 UserMsg::Play(mvs) => {
                     handle_active();
                     if let Err(e) = shared.write().unwrap().game.play(&mvs) {
@@ -92,7 +94,7 @@ fn main() {
                 }
                 UserMsg::Go(limits) => {
                     handle_active();
-                    shared.write().unwrap().go(Instant::now(), Limits::new(limits));
+                    shared.write().unwrap().go(Instant::now(), limits);
                     cmd_tx.send(Cmd::Go).unwrap();
                 }
                 UserMsg::Stop => {

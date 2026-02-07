@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     game::Game,
-    protocol::{EngineMsg, Mv},
+    protocol::{EngineMsg, mv::Mv},
     search::{ExitSearch, convert_eval, search},
     send, send_error,
     shared::Shared,

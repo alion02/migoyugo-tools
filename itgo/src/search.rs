@@ -35,7 +35,7 @@ pub fn search(
     if thread.tick_countdown() {
         if !shared.active()
             || thread.nodes >= shared.limits.nodes
-            || shared.started_at.elapsed().as_millis() >= shared.limits.ms as u128
+            || shared.started_at.elapsed().as_millis() >= shared.limits.time as u128
         {
             resume_unwind(Box::new(ExitSearch));
         }
