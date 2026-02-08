@@ -30,6 +30,16 @@ pub enum Score {
     Loss,
 }
 
+impl Score {
+    pub fn flipped(self) -> Self {
+        match self {
+            Self::Win => Self::Loss,
+            Self::Draw => Self::Draw,
+            Self::Loss => Self::Win,
+        }
+    }
+}
+
 /// Pentanomial outcome for a game pair
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pentanomial {
@@ -396,7 +406,7 @@ fn play_game_pair(
     stop_flag: &Arc<AtomicBool>,
 ) -> GamePairResult {
     // Game 1: dev = white, base = black
-    let game1 = play_single_game(config, dev, base, opening, true, stop_flag);
+    let game1 = play_single_game(config, dev, base, opening, stop_flag);
 
     // Reset for game 2
     dev.reset();
@@ -407,7 +417,7 @@ fn play_game_pair(
         // Reset failed, create error result
         spawn_error_result(config, dev, base)
     } else {
-        play_single_game(config, dev, base, opening, false, stop_flag)
+        play_single_game(config, base, dev, opening, stop_flag)
     };
 
     // Reset for next pair
@@ -420,36 +430,21 @@ fn play_game_pair(
 
 fn play_single_game(
     config: &GameConfig,
-    dev: &mut ManagedEngine,
-    base: &mut ManagedEngine,
+    white: &mut ManagedEngine,
+    black: &mut ManagedEngine,
     opening: &[Mv],
-    dev_is_white: bool,
     stop_flag: &Arc<AtomicBool>,
 ) -> GameResult {
     // Ensure engines are ready
-    let (white, black, white_role, black_role) = if dev_is_white {
-        match (dev.ensure_ready(config), base.ensure_ready(config)) {
-            (Ok(d), Ok(b)) => (d, b, EngineRole::Dev, EngineRole::Base),
-            (Err(e), _) => {
-                dev.mark_failed();
-                return spawn_error(EngineRole::Dev, e);
-            }
-            (_, Err(e)) => {
-                base.mark_failed();
-                return spawn_error(EngineRole::Base, e);
-            }
+    let (white_engine, black_engine) = match (white.ensure_ready(config), black.ensure_ready(config)) {
+        (Ok(w), Ok(b)) => (w, b),
+        (Err(e), _) => {
+            white.mark_failed();
+            return spawn_error(white.role, e);
         }
-    } else {
-        match (base.ensure_ready(config), dev.ensure_ready(config)) {
-            (Ok(b), Ok(d)) => (b, d, EngineRole::Base, EngineRole::Dev),
-            (Err(e), _) => {
-                base.mark_failed();
-                return spawn_error(EngineRole::Base, e);
-            }
-            (_, Err(e)) => {
-                dev.mark_failed();
-                return spawn_error(EngineRole::Dev, e);
-            }
+        (_, Err(e)) => {
+            black.mark_failed();
+            return spawn_error(black.role, e);
         }
     };
 
@@ -458,8 +453,8 @@ fn play_single_game(
     let opening_sqs: Vec<_> = opening.iter().map(|mv| mv.sq.into()).collect();
 
     if !opening_sqs.is_empty() {
-        _ = white.play(opening_sqs.clone());
-        _ = black.play(opening_sqs);
+        _ = white_engine.play(opening_sqs.clone());
+        _ = black_engine.play(opening_sqs);
         for mv in opening {
             if game.play(*mv).is_err() {
                 break;
@@ -468,10 +463,10 @@ fn play_single_game(
     }
 
     // Play the game
-    let raw = run_game_loop(game, white, black, config.time_ms, stop_flag);
+    let raw = run_game_loop(game, white_engine, black_engine, config.time_ms, stop_flag);
 
     // Interpret result
-    interpret_result(raw, dev_is_white, white_role, black_role, dev, base)
+    interpret_result(raw, white, black)
 }
 
 fn spawn_error(failed_role: EngineRole, error: String) -> GameResult {
@@ -592,39 +587,33 @@ fn run_game_loop(
 
 fn interpret_result(
     raw: RawGameResult,
-    dev_is_white: bool,
-    white_role: EngineRole,
-    black_role: EngineRole,
-    dev: &mut ManagedEngine,
-    base: &mut ManagedEngine,
+    white: &mut ManagedEngine,
+    black: &mut ManagedEngine,
 ) -> GameResult {
     // Convert white_score to dev_score
-    let dev_score = if dev_is_white {
+    let dev_score = if white.role == EngineRole::Dev {
         raw.white_score
     } else {
-        match raw.white_score {
-            Score::Win => Score::Loss,
-            Score::Draw => Score::Draw,
-            Score::Loss => Score::Win,
-        }
+        raw.white_score.flipped()
     };
 
     // Convert termination
     let termination = raw.termination.map(|t| {
-        let faulty_role = if t.faulty_color == Color::White { white_role } else { black_role };
+        let faulty_engine = if t.faulty_color == Color::White { &mut *white } else { &mut *black };
 
         // Mark the faulty engine for respawn if it's a severe error
         if matches!(t.kind, TerminationKind::Crash | TerminationKind::ProtocolError | TerminationKind::SyncFailed) {
-            match faulty_role {
-                EngineRole::Dev => dev.mark_failed(),
-                EngineRole::Base => base.mark_failed(),
-            }
+            faulty_engine.mark_failed();
         }
 
         Termination {
             kind: t.kind,
             details: t.details,
-            faulty_engine: if t.kind == TerminationKind::Stopped { None } else { Some(faulty_role.as_faulty()) },
+            faulty_engine: if t.kind == TerminationKind::Stopped {
+                None
+            } else {
+                Some(faulty_engine.role.as_faulty())
+            },
         }
     });
 
