@@ -229,13 +229,23 @@ fn print_final_results(stats: &MatchStats, sprt: &SprtState, pairs: usize, elaps
     println!("=== Final Results ===");
     println!();
     println!("Played: {} games ({pairs} pairs) in {}", stats.total_games(), format_duration(elapsed));
-    println!("Score:  +{}-{}= {} ({:.2}%)", stats.dev_wins, stats.dev_losses, stats.draws, stats.dev_score_pct());
+    println!("Score:  +{}-{}={} ({:.2}%)", stats.dev_wins, stats.dev_losses, stats.draws, stats.dev_score_pct());
     println!("Penta:  {:?}", stats.pentanomial.0);
-    println!("Elo:    {:+.2} (bounds: {:.1}, {:.1})", sprt.elo_estimate(&stats.pentanomial), sprt.elo0(), sprt.elo1());
+    println!(
+        "Elo:    {:+.2} (bounds: [{:.1}, {:.1}])",
+        sprt.elo_estimate(&stats.pentanomial),
+        sprt.elo0(),
+        sprt.elo1()
+    );
     println!("LLR:    {:.3} [{:.3}, {:.3}]", sprt.llr(), sprt.lower_bound(), sprt.upper_bound());
-    println!("Errors: Dev(C:{} T:{} I:{}), Base(C:{} T:{} I:{})",
-        stats.dev_crashes, stats.dev_timeouts, stats.dev_illegal_moves,
-        stats.base_crashes, stats.base_timeouts, stats.base_illegal_moves
+    println!(
+        "Errors: Dev(C:{} T:{} I:{}), Base(C:{} T:{} I:{})",
+        stats.dev_crashes,
+        stats.dev_timeouts,
+        stats.dev_illegal_moves,
+        stats.base_crashes,
+        stats.base_timeouts,
+        stats.base_illegal_moves
     );
 }
 
