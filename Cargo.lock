@@ -53,6 +53,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.101"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
+
+[[package]]
 name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -199,6 +205,7 @@ checksum = "c73965a44b789c468b9574bb32ae588d92d7f9509cab1b91b879e637c64274a4"
 name = "myu-arena"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "ctrlc",
  "myu-core",

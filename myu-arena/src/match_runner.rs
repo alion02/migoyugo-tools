@@ -11,6 +11,7 @@ use std::{
     thread,
 };
 
+use anyhow::Result;
 use myu_core::{Color, Game, Mv, Outcome};
 
 use crate::{
@@ -178,7 +179,7 @@ impl ManagedEngine {
     }
 
     /// Ensure the engine is ready to play. Spawns if needed.
-    fn ensure_ready(&mut self, config: &GameConfig) -> Result<&mut Engine, String> {
+    fn ensure_ready(&mut self, config: &GameConfig) -> Result<&mut Engine> {
         if self.engine.is_none() {
             let mut engine = Engine::spawn(
                 self.role.name(),
@@ -474,14 +475,14 @@ fn play_single_game(
     interpret_result(raw, dev_is_white, white_role, black_role, dev, base)
 }
 
-fn spawn_error(failed_role: EngineRole, error: String) -> GameResult {
+fn spawn_error(failed_role: EngineRole, error: anyhow::Error) -> GameResult {
     let dev_failed = failed_role == EngineRole::Dev;
     GameResult {
         game: Game::new(),
         dev_score: if dev_failed { Score::Loss } else { Score::Win },
         termination: Some(Termination {
             kind: TerminationKind::SpawnFailed,
-            details: error,
+            details: format!("{error:#}"),
             faulty_engine: Some(failed_role.as_faulty()),
         }),
     }

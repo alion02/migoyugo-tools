@@ -6,6 +6,7 @@ use std::{
     path::Path,
 };
 
+use anyhow::{Context, Result};
 use myu_core::{Mv, State, parse_sq};
 
 /// Opening book: a collection of opening move sequences
@@ -21,13 +22,13 @@ impl OpeningBook {
 
     /// Load opening book from file
     /// Format: one opening per line, space-separated move sequence (e.g., "d4 d5 c4 e6")
-    pub fn from_file(path: &Path) -> Result<Self, String> {
-        let file = File::open(path).map_err(|e| format!("Failed to open {}: {e}", path.display()))?;
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let file = File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
         let reader = BufReader::new(file);
         let mut openings = Vec::new();
 
         for (line_num, line) in reader.lines().enumerate() {
-            let line = line.map_err(|e| format!("Read error at line {}: {e}", line_num + 1))?;
+            let line = line.with_context(|| format!("Read error at line {}", line_num + 1))?;
             let line = line.trim();
 
             if line.is_empty() || line.starts_with('#') {
@@ -37,7 +38,12 @@ impl OpeningBook {
             let mut moves = Vec::new();
             for (move_idx, move_str) in line.split_whitespace().enumerate() {
                 let sq = parse_sq(move_str).map_err(|e| {
-                    format!("Invalid move '{}' at line {} position {}: {e}", move_str, line_num + 1, move_idx + 1)
+                    anyhow::anyhow!(
+                        "Invalid move '{}' at line {} position {}: {e}",
+                        move_str,
+                        line_num + 1,
+                        move_idx + 1
+                    )
                 })?;
                 moves.push(Mv::new(sq));
             }
@@ -85,7 +91,7 @@ impl OpeningBook {
     }
 
     /// Validate all openings by replaying them from the initial position
-    fn validate(&mut self) -> Result<(), String> {
+    fn validate(&mut self) -> Result<()> {
         let mut invalid_indices = Vec::new();
 
         for (idx, opening) in self.openings.iter().enumerate() {
@@ -102,42 +108,47 @@ impl OpeningBook {
 
         // Ensure we still have at least one opening
         if self.openings.is_empty() {
-            return Err("No valid openings in book after validation".into());
+            return Err(anyhow::anyhow!("No valid openings in book after validation"));
         }
 
         Ok(())
     }
 
     /// Validate a single opening by replaying it from the initial position
-    fn validate_opening(opening: &[Mv]) -> Result<(), String> {
+    fn validate_opening(opening: &[Mv]) -> Result<()> {
         let mut state = State::new();
 
         for (move_idx, mv) in opening.iter().enumerate() {
             match state.play(*mv) {
                 Ok((new_state, _)) => state = new_state,
                 Err(e) => {
-                    return Err(format!("move {} ({}): {}", move_idx + 1, myu_core::format_sq(mv.sq), e));
+                    return Err(anyhow::anyhow!(
+                        "move {} ({}): {}",
+                        move_idx + 1,
+                        myu_core::format_sq(mv.sq),
+                        e
+                    ));
                 }
             }
         }
 
         // Check if the position is still playable (not a terminal position)
         if state.legal_moves().next().is_none() {
-            return Err("opening leads to terminal position".into());
+            return Err(anyhow::anyhow!("opening leads to terminal position"));
         }
 
         Ok(())
     }
 
     /// Save opening book to file
-    pub fn save_to_file(&self, path: &Path) -> Result<(), String> {
+    pub fn save_to_file(&self, path: &Path) -> Result<()> {
         use std::io::Write;
 
-        let mut file = File::create(path).map_err(|e| format!("Failed to create {}: {e}", path.display()))?;
+        let mut file = File::create(path).with_context(|| format!("Failed to create {}", path.display()))?;
 
         for opening in &self.openings {
             let line: String = opening.iter().map(|mv| myu_core::format_sq(mv.sq)).collect::<Vec<_>>().join(" ");
-            writeln!(file, "{}", line).map_err(|e| format!("Write error: {e}"))?;
+            writeln!(file, "{}", line).context("Write error")?;
         }
 
         Ok(())

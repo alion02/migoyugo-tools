@@ -16,6 +16,7 @@ use std::{
     time::Instant,
 };
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Commands, TestArgs};
 use gsprt::{GsprtResult, SprtState};
@@ -24,7 +25,7 @@ use myu_core::{MvFormat, PgnFormat, format_game};
 use opening_book::OpeningBook;
 use stats::MatchStats;
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -33,27 +34,22 @@ fn main() {
     }
 }
 
-fn gen_book(count: usize, depth: usize, output: PathBuf) {
+fn gen_book(count: usize, depth: usize, output: PathBuf) -> Result<()> {
     println!("Generating {count} openings of depth {depth}...");
     let book = OpeningBook::generate_random(count, depth);
-    match book.save_to_file(&output) {
-        Ok(()) => println!("Opening book saved to {}", output.display()),
-        Err(e) => {
-            eprintln!("Error saving opening book: {e}");
-            std::process::exit(1);
-        }
-    }
+    book.save_to_file(&output).context("Error saving opening book")?;
+    println!("Opening book saved to {}", output.display());
+    Ok(())
 }
 
-fn run_test(args: TestArgs) {
+fn run_test(args: TestArgs) -> Result<()> {
     if args.elo0 >= args.elo1 {
-        eprintln!("Error: elo0 must be less than elo1");
-        std::process::exit(1);
+        anyhow::bail!("elo0 must be less than elo1");
     }
 
-    setup_logging(&args);
-    let opening_book = load_opening_book(&args);
-    let games_writer = setup_games_writer(&args);
+    setup_logging(&args)?;
+    let opening_book = load_opening_book(&args)?;
+    let games_writer = setup_games_writer(&args)?;
     let stop_flag = setup_ctrlc_handler();
 
     let mut stats = MatchStats::default();
@@ -107,35 +103,34 @@ fn run_test(args: TestArgs) {
     }
 
     print_final_results(&stats, &sprt, completed_pairs, start_time.elapsed());
+    Ok(())
 }
 
-fn setup_logging(args: &TestArgs) {
-    if let Some(ref logs_dir) = args.logs_dir
-        && let Err(e) = fs::create_dir_all(logs_dir)
-    {
-        eprintln!("Error creating logs directory: {e}");
-        std::process::exit(1);
+fn setup_logging(args: &TestArgs) -> Result<()> {
+    if let Some(ref logs_dir) = args.logs_dir {
+        fs::create_dir_all(logs_dir).context("Error creating logs directory")?;
     }
+    Ok(())
 }
 
-fn load_opening_book(args: &TestArgs) -> OpeningBook {
+fn load_opening_book(args: &TestArgs) -> Result<OpeningBook> {
     match &args.opening_book {
-        Some(path) => OpeningBook::from_file(path).unwrap_or_else(|e| {
-            eprintln!("Error loading opening book: {e}");
-            std::process::exit(1);
-        }),
-        None => OpeningBook::empty(),
+        Some(path) => OpeningBook::from_file(path).context("Error loading opening book"),
+        None => Ok(OpeningBook::empty()),
     }
 }
 
-fn setup_games_writer(args: &TestArgs) -> Option<Arc<Mutex<BufWriter<File>>>> {
-    args.games_file.as_ref().map(|path| {
-        let file = OpenOptions::new().create(true).append(true).open(path).unwrap_or_else(|e| {
-            eprintln!("Error opening games file: {e}");
-            std::process::exit(1);
-        });
-        Arc::new(Mutex::new(BufWriter::new(file)))
-    })
+fn setup_games_writer(args: &TestArgs) -> Result<Option<Arc<Mutex<BufWriter<File>>>>> {
+    if let Some(path) = &args.games_file {
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .context("Error opening games file")?;
+        Ok(Some(Arc::new(Mutex::new(BufWriter::new(file)))))
+    } else {
+        Ok(None)
+    }
 }
 
 fn setup_ctrlc_handler() -> Arc<AtomicBool> {

@@ -15,6 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::{Context, Result};
 use myu_protocol::{EngineMsg, Limit, Sq, UserMsg, deserialize, serialize};
 
 /// A communication log entry
@@ -73,7 +74,7 @@ pub struct Engine {
     path: PathBuf,
     child: Child,
     stdin: BufWriter<ChildStdin>,
-    msg_rx: Receiver<Result<(EngineMsg, String), String>>,
+    msg_rx: Receiver<Result<(EngineMsg, String), anyhow::Error>>,
     _reader_thread: JoinHandle<()>,
     logs_dir: Option<PathBuf>,
     log: Vec<LogEntry>,
@@ -92,7 +93,7 @@ impl Engine {
         timeout_leniency: f64,
         logs_dir: Option<PathBuf>,
         stop_flag: Arc<AtomicBool>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self> {
         let name = name.into();
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
@@ -100,10 +101,10 @@ impl Engine {
             .stderr(Stdio::null())
             .process_group(0)
             .spawn()
-            .map_err(|e| format!("Failed to spawn {name}: {e}"))?;
+            .with_context(|| format!("Failed to spawn {name}"))?;
 
-        let stdin = child.stdin.take().ok_or("Failed to capture stdin")?;
-        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+        let stdin = child.stdin.take().context("Failed to capture stdin")?;
+        let stdout = child.stdout.take().context("Failed to capture stdout")?;
 
         let timeout_ms = (time_ms as f64 * timeout_leniency) as u64;
 
@@ -119,7 +120,7 @@ impl Engine {
                 match reader.read_line(&mut line) {
                     Ok(0) => {
                         // EOF - engine closed stdout
-                        _ = msg_tx.send(Err("Engine closed stdout".into()));
+                        _ = msg_tx.send(Err(anyhow::anyhow!("Engine closed stdout")));
                         break;
                     }
                     Ok(_) => {
@@ -134,14 +135,17 @@ impl Engine {
                                 }
                             }
                             Err(e) => {
-                                if msg_tx.send(Err(format!("Parse error: {e}, line: {trimmed}"))).is_err() {
+                                if msg_tx
+                                    .send(Err(anyhow::anyhow!("Parse error: {e}, line: {trimmed}")))
+                                    .is_err()
+                                {
                                     break;
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        _ = msg_tx.send(Err(format!("Read error: {e}")));
+                        _ = msg_tx.send(Err(anyhow::anyhow!("Read error: {e}")));
                         break;
                     }
                 }
@@ -169,7 +173,7 @@ impl Engine {
         Ok(engine)
     }
 
-    fn wait_for_id(&mut self) -> Result<(), String> {
+    fn wait_for_id(&mut self) -> Result<()> {
         // Engines should send Id message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Ok((msg @ EngineMsg::Id { .. }, raw))) => {
@@ -181,11 +185,15 @@ impl Engine {
             }
             Ok(Ok((msg, raw))) => {
                 self.log_received(&raw);
-                Err(format!("Engine {} sent {:?} instead of Id", self.name, msg))
+                Err(anyhow::anyhow!("Engine {} sent {:?} instead of Id", self.name, msg))
             }
             Ok(Err(e)) => Err(e),
-            Err(RecvTimeoutError::Timeout) => Err(format!("Engine {} did not send Id message (timeout)", self.name)),
-            Err(RecvTimeoutError::Disconnected) => Err(format!("Engine {} reader disconnected", self.name)),
+            Err(RecvTimeoutError::Timeout) => {
+                Err(anyhow::anyhow!("Engine {} did not send Id message (timeout)", self.name))
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                Err(anyhow::anyhow!("Engine {} reader disconnected", self.name))
+            }
         }
     }
 
@@ -225,15 +233,15 @@ impl Engine {
         }
     }
 
-    fn send_message(&mut self, msg: &UserMsg) -> Result<(), String> {
-        let line = serialize(msg).map_err(|e| format!("Serialization error: {e}"))?;
+    fn send_message(&mut self, msg: &UserMsg) -> Result<()> {
+        let line = serialize(msg).context("Serialization error")?;
         self.log(LogDirection::Sent, &line);
-        writeln!(self.stdin, "{line}").map_err(|e| format!("Write error: {e}"))?;
-        self.stdin.flush().map_err(|e| format!("Flush error: {e}"))?;
+        writeln!(self.stdin, "{line}").context("Write error")?;
+        self.stdin.flush().context("Flush error")?;
         Ok(())
     }
 
-    fn recv_message_timeout(&mut self, timeout: Duration) -> Result<Option<EngineMsg>, String> {
+    fn recv_message_timeout(&mut self, timeout: Duration) -> Result<Option<EngineMsg>> {
         match self.msg_rx.recv_timeout(timeout) {
             Ok(Ok((msg, raw))) => {
                 self.log_received(&raw);
@@ -241,18 +249,18 @@ impl Engine {
             }
             Ok(Err(e)) => Err(e),
             Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err("Engine reader disconnected".into()),
+            Err(RecvTimeoutError::Disconnected) => Err(anyhow::anyhow!("Engine reader disconnected")),
         }
     }
 
     /// Send Sync command and wait for Ready
-    pub fn sync(&mut self) -> Result<(), String> {
+    pub fn sync(&mut self) -> Result<()> {
         self.send_message(&UserMsg::Sync)?;
         self.wait_for_ready()
     }
 
     /// Reset the engine for a new game
-    pub fn reset(&mut self) -> Result<(), String> {
+    pub fn reset(&mut self) -> Result<()> {
         self.send_message(&UserMsg::Reset)?;
         self.send_message(&UserMsg::Sync)?;
         self.wait_for_ready()?;
@@ -262,12 +270,12 @@ impl Engine {
         Ok(())
     }
 
-    fn wait_for_ready(&mut self) -> Result<(), String> {
+    fn wait_for_ready(&mut self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_millis(self.timeout_ms);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(format!("Engine {} did not respond to Sync", self.name));
+                return Err(anyhow::anyhow!("Engine {} did not respond to Sync", self.name));
             }
             match self.recv_message_timeout(remaining)? {
                 Some(EngineMsg::Ready) => return Ok(()),
@@ -281,7 +289,7 @@ impl Engine {
     }
 
     /// Send Play command
-    pub fn play(&mut self, moves: Vec<Sq>) -> Result<(), String> {
+    pub fn play(&mut self, moves: Vec<Sq>) -> Result<()> {
         self.send_message(&UserMsg::Play(moves))
     }
 
