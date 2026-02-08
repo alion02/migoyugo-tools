@@ -224,24 +224,21 @@ fn print_final_results(stats: &MatchStats, sprt: &SprtState, pairs: usize, elaps
     println!();
     println!("=== Final Results ===");
     println!();
-    println!("Games played: {} ({pairs} pairs)", stats.total_games());
-    println!("Time elapsed: {:.1}s", elapsed.as_secs_f64());
-    println!();
-    println!("Score: Dev +{}-{}={}", stats.dev_wins, stats.dev_losses, stats.draws);
-    println!("Score percentage: {:.2}%", stats.dev_score_pct());
-    println!();
-    println!("Pentanomial: {}", stats.pentanomial);
-    println!();
-    println!("Elo: {:+.2}", sprt.elo_estimate(&stats.pentanomial));
-    println!("LLR: {:.3} [{:.3}, {:.3}]", sprt.llr(), sprt.lower_bound(), sprt.upper_bound());
-    println!();
-    println!("=== Error Summary ===");
-    println!(
-        "Dev:  {} crashes, {} timeouts, {} illegal",
-        stats.dev_crashes, stats.dev_timeouts, stats.dev_illegal_moves
-    );
-    println!(
-        "Base: {} crashes, {} timeouts, {} illegal",
+    println!("Played: {} games ({pairs} pairs) in {}", stats.total_games(), format_duration(elapsed));
+    println!("Score:  +{}-{}= {} ({:.2}%)", stats.dev_wins, stats.dev_losses, stats.draws, stats.dev_score_pct());
+    println!("Penta:  {:?}", stats.pentanomial.0);
+    println!("Elo:    {:+.2} (bounds: {:.1}, {:.1})", sprt.elo_estimate(&stats.pentanomial), sprt.elo0(), sprt.elo1());
+    println!("LLR:    {:.3} [{:.3}, {:.3}]", sprt.llr(), sprt.lower_bound(), sprt.upper_bound());
+    println!("Errors: Dev(C:{} T:{} I:{}), Base(C:{} T:{} I:{})",
+        stats.dev_crashes, stats.dev_timeouts, stats.dev_illegal_moves,
         stats.base_crashes, stats.base_timeouts, stats.base_illegal_moves
     );
+}
+
+fn format_duration(d: std::time::Duration) -> String {
+    let seconds = d.as_secs();
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let seconds = seconds % 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
