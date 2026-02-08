@@ -40,6 +40,14 @@ impl SprtState {
         self.llr
     }
 
+    pub fn elo0(&self) -> f64 {
+        self.elo0
+    }
+
+    pub fn elo1(&self) -> f64 {
+        self.elo1
+    }
+
     /// Update the LLR based on current pentanomial counts.
     pub fn update(&mut self, pentanomial: &[u64; 5]) {
         self.llr = compute_llr_logistic(self.elo0, self.elo1, pentanomial);
