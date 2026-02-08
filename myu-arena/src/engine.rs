@@ -313,8 +313,7 @@ impl Engine {
                         eprintln!("[{}] Engine error: {}", self.name, e);
                         // Don't treat error messages as fatal, continue waiting
                     }
-                    EngineMsg::About { .. }
-                    | EngineMsg::Ready => {
+                    EngineMsg::About { .. } | EngineMsg::Ready => {
                         // Unexpected but not fatal
                     }
                     EngineMsg::Unknown => {
