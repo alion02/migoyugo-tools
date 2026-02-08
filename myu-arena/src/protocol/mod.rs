@@ -7,6 +7,7 @@ pub mod limits;
 pub mod mv;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 pub use serde_json::{from_str as deserialize, to_string as serialize};
 
 use crate::protocol::{limits::Limits, mv::Mv};
@@ -16,40 +17,16 @@ use crate::protocol::{limits::Limits, mv::Mv};
 #[serde(rename_all = "snake_case")]
 pub enum EngineMsg {
     /// Sent at startup to identify the engine.
-    About {
-        name: Option<String>,
-        author: Option<String>,
-        version: Option<String>,
-        #[serde(default)]
-        features: Vec<String>,
-    },
+    About { name: Option<String> },
     /// Acknowledgment sent in response to a [`UserMsg::Sync`] message.
     Ready,
-    /// Information about the search progress.
-    Info {
-        /// The principal variation (best line found so far).
-        pv: Vec<Mv>,
-        /// The evaluation of the current position.
-        eval: Eval,
-        /// The depth of the search.
-        depth: u32,
-        /// The time elapsed in milliseconds.
-        time: u64,
-        /// The number of nodes searched.
-        nodes: u64,
-        /// Kilo-nodes per second.
-        knps: u64,
-        /// The number of evaluations performed.
-        evals: u64,
-        /// Kilo-evals per second.
-        keps: u64,
-    },
     /// The best move found by the search.
     Best(Option<Mv>),
-    /// A warning message.
-    Warn(String),
     /// An error message.
     Error(String),
+    /// Any other message type.
+    #[serde(untagged)]
+    Unknown(#[allow(dead_code)] Value),
 }
 
 /// Message sent from the arena to the engine.
@@ -64,16 +41,4 @@ pub enum UserMsg {
     Sync,
     /// Start a search with the given limits.
     Go(Limits),
-    /// Stop the ongoing search immediately.
-    Stop,
-}
-
-/// Evaluation score.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Eval {
-    /// A regular score in engine-defined abstract units.
-    Score(i32),
-    /// A decisive score (forced win/loss).
-    Decisive(i32),
 }

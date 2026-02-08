@@ -173,7 +173,7 @@ impl Engine {
         // Engines should send About message immediately on startup
         match self.msg_rx.recv_timeout(Duration::from_secs(5)) {
             Ok(Ok((msg @ EngineMsg::About { .. }, raw))) => {
-                if let EngineMsg::About { name, .. } = msg {
+                if let EngineMsg::About { name } = msg {
                     self.engine_name = name;
                 }
                 self.log_received(&raw);
@@ -309,13 +309,15 @@ impl Engine {
                 Ok(Some(msg)) => match msg {
                     EngineMsg::Best(Some(sq)) => return MoveResult::Move(sq),
                     EngineMsg::Best(None) => return MoveResult::NoMove,
-                    EngineMsg::Info { .. } => continue, // Ignore info messages
                     EngineMsg::Error(e) => {
                         eprintln!("[{}] Engine error: {}", self.name, e);
                         // Don't treat error messages as fatal, continue waiting
                     }
-                    EngineMsg::About { .. } | EngineMsg::Ready | EngineMsg::Warn(_) => {
+                    EngineMsg::About { .. } | EngineMsg::Ready => {
                         // Unexpected but not fatal
+                    }
+                    EngineMsg::Unknown(_) => {
+                        // Ignore opaque unknown messages
                     }
                 },
                 Ok(None) => continue, // Timeout on recv, keep waiting
