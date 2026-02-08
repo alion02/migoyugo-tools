@@ -56,11 +56,24 @@ impl SprtState {
         }
     }
 
-    /// Estimate Elo from pentanomial results
+    /// Estimate normalized Pentanomial Elo (nElo) from results.
+    ///
+    /// This uses the formula: nElo = (mu - 0.5) / sigma_pg * (800 / ln(10))
+    /// where sigma_pg is the per-game standard deviation.
     pub fn elo_estimate(&self, pentanomial: &[u64; 5]) -> f64 {
         let (_, pdf) = results_to_pdf(pentanomial);
-        let (score, _) = stats(&pdf);
-        score_to_elo(score)
+        let (mu, var) = stats(&pdf);
+        // var is the variance of the pair score (average of two games).
+        // The per-game variance is 2 * var (assuming independence within pair, which is standard for nElo).
+        let sigma_pg = (2.0 * var).sqrt();
+
+        // Avoid division by zero in extreme cases (though regularization in results_to_pdf prevents exact zero)
+        if sigma_pg < 1e-9 {
+            return if mu > 0.5 { f64::INFINITY } else { f64::NEG_INFINITY };
+        }
+
+        const NELO_DIVIDER: f64 = 800.0 / std::f64::consts::LN_10;
+        (mu - 0.5) / sigma_pg * NELO_DIVIDER
     }
 }
 
@@ -221,5 +234,21 @@ mod tests {
         let neutral = [10, 20, 40, 20, 10];
         let llr = compute_llr_logistic(0.0, 5.0, &neutral);
         assert!(llr.abs() < 1.0, "LLR should be near 0 for symmetric results: {llr}");
+    }
+
+    #[test]
+    fn test_nelo_calculation() {
+        let sprt = SprtState::new(0.05, 0.05, 0.0, 5.0);
+
+        // Scenario: W/L ratio 3:1, no draws.
+        // Pairs outcomes: WW (56.25%), WL/LW (37.5%), LL (6.25%)
+        // Counts: [625, 0, 3750, 0, 5625] (total 10000)
+        let counts = [625, 0, 3750, 0, 5625];
+
+        let nelo = sprt.elo_estimate(&counts);
+
+        // Expected nElo: approx 200.5
+        // Logistic Elo would be ~190.8
+        assert!((nelo - 200.5).abs() < 1.0, "nElo was {nelo}, expected ~200.5");
     }
 }
