@@ -129,6 +129,9 @@ pub struct GameConfig {
     pub time_ms: u64,
     pub timeout_leniency: f64,
     pub logs_dir: Option<PathBuf>,
+    pub dev_settings: Option<serde_json::Map<String, serde_json::Value>>,
+    pub base_settings: Option<serde_json::Map<String, serde_json::Value>>,
+    pub engine_settings: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 // =============================================================================
@@ -163,6 +166,26 @@ impl EngineRole {
             EngineRole::Base => FaultyEngine::Base,
         }
     }
+
+    fn settings(self, config: &GameConfig) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        let mut settings = Vec::new();
+        if let Some(s) = &config.engine_settings {
+            settings.push(s.clone());
+        }
+        match self {
+            EngineRole::Dev => {
+                if let Some(s) = &config.dev_settings {
+                    settings.push(s.clone());
+                }
+            }
+            EngineRole::Base => {
+                if let Some(s) = &config.base_settings {
+                    settings.push(s.clone());
+                }
+            }
+        }
+        settings
+    }
 }
 
 /// A managed engine that tracks health and handles spawn/reset
@@ -187,6 +210,7 @@ impl ManagedEngine {
                 config.timeout_leniency,
                 config.logs_dir.clone(),
                 self.stop_flag.clone(),
+                self.role.settings(config),
             )?;
             engine.sync()?;
             self.engine = Some(engine);
@@ -284,9 +308,21 @@ impl MatchRunner {
         opening_book: OpeningBook,
         concurrency: usize,
         stop_flag: Arc<AtomicBool>,
+        dev_settings: Option<serde_json::Map<String, serde_json::Value>>,
+        base_settings: Option<serde_json::Map<String, serde_json::Value>>,
+        engine_settings: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Self {
         Self {
-            config: Arc::new(GameConfig { dev_path, base_path, time_ms, timeout_leniency, logs_dir }),
+            config: Arc::new(GameConfig {
+                dev_path,
+                base_path,
+                time_ms,
+                timeout_leniency,
+                logs_dir,
+                dev_settings,
+                base_settings,
+                engine_settings,
+            }),
             opening_book,
             concurrency,
             stop_flag,
@@ -455,11 +491,9 @@ fn play_single_game(
 
     // Send opening moves to engines
     let mut game = Game::new();
-    let opening_sqs: Vec<_> = opening.iter().map(|mv| mv.sq.into()).collect();
-
-    if !opening_sqs.is_empty() {
-        _ = white.play(opening_sqs.clone());
-        _ = black.play(opening_sqs);
+    if !opening.is_empty() {
+        _ = white.play(opening.iter().map(|mv| mv.sq.into()).collect());
+        _ = black.play(opening.iter().map(|mv| mv.sq.into()).collect());
         for mv in opening {
             if game.play(*mv).is_err() {
                 break;
@@ -538,12 +572,12 @@ fn run_game_loop(
             if side_to_move == Color::White { (&mut *white, &mut *black) } else { (&mut *black, &mut *white) };
 
         match current.go(time_ms) {
-            MoveResult::Move(sq) => {
-                let mv = Mv::new(sq.into());
+            MoveResult::Move(proto_mv) => {
+                let mv = Mv::new(proto_mv.into());
                 match game.play(mv) {
                     Ok(()) => {
-                        _ = current.play(vec![sq]);
-                        _ = opponent.play(vec![sq]);
+                        _ = current.play(vec![proto_mv]);
+                        _ = opponent.play(vec![proto_mv]);
                     }
                     Err(e) => {
                         current.write_log(LogReason::IllegalMove);

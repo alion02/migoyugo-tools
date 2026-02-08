@@ -3,11 +3,12 @@ mod engine;
 mod gsprt;
 mod match_runner;
 mod opening_book;
+mod protocol;
 mod stats;
 
 use std::{
     fs::{self, File, OpenOptions},
-    io::{BufWriter, Write},
+    io::{BufReader, BufWriter, Write},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -72,6 +73,9 @@ fn run_test(args: TestArgs) {
         opening_book,
         args.concurrency,
         stop_flag.clone(),
+        load_settings(args.dev_settings.as_deref()),
+        load_settings(args.base_settings.as_deref()),
+        load_settings(args.engine_settings.as_deref()),
     );
 
     let mut completed_pairs = 0;
@@ -241,4 +245,39 @@ fn format_duration(d: std::time::Duration) -> String {
     let minutes = (seconds % 3600) / 60;
     let seconds = seconds % 60;
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+fn load_settings(input: Option<&str>) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let input = input?;
+    // Try to parse as JSON first
+    if let Ok(settings) = serde_json::from_str(input) {
+        return Some(settings);
+    }
+
+    // Try to read from file
+    let path = PathBuf::from(input);
+    if path.exists() {
+        match File::open(&path) {
+            Ok(file) => match serde_json::from_reader(BufReader::new(file)) {
+                Ok(settings) => return Some(settings),
+                Err(e) => {
+                    eprintln!("Error parsing settings file {}: {}", input, e);
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("Error opening settings file {}: {}", input, e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // If neither, and it looks like JSON object, report error
+    if input.trim().starts_with('{') {
+        eprintln!("Error parsing JSON settings: invalid JSON");
+        std::process::exit(1);
+    }
+
+    eprintln!("Error: settings argument '{}' is neither valid JSON nor a file path", input);
+    std::process::exit(1);
 }
