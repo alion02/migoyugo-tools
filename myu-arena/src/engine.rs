@@ -316,7 +316,7 @@ impl Engine {
                     EngineMsg::About { .. } | EngineMsg::Ready => {
                         // Unexpected but not fatal
                     }
-                    EngineMsg::Unknown => {
+                    EngineMsg::Unknown(_) => {
                         // Ignore opaque unknown messages
                     }
                 },

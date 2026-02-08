@@ -7,6 +7,7 @@ pub mod limits;
 pub mod mv;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 pub use serde_json::{from_str as deserialize, to_string as serialize};
 
 use crate::protocol::{limits::Limits, mv::Mv};
@@ -24,8 +25,8 @@ pub enum EngineMsg {
     /// An error message.
     Error(String),
     /// Any other message type.
-    #[serde(other)]
-    Unknown,
+    #[serde(untagged)]
+    Unknown(#[allow(dead_code)] Value),
 }
 
 /// Message sent from the arena to the engine.
