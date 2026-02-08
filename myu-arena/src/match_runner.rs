@@ -189,7 +189,7 @@ impl ManagedEngine {
 
     /// Ensure the engine is ready to play. Spawns if needed.
     fn ensure_ready(&mut self, config: &GameConfig) -> Result<&mut Engine, String> {
-        if self.engine.is_none() {
+        if self.needs_respawn() {
             let mut engine = Engine::spawn(
                 self.role.name(),
                 self.role.path(config),
@@ -209,7 +209,7 @@ impl ManagedEngine {
         if let Some(ref mut engine) = self.engine
             && engine.reset().is_err()
         {
-            self.engine = None;
+            self.mark_failed();
         }
     }
 
@@ -585,17 +585,9 @@ fn run_game_loop(
 // Result Interpretation
 // =============================================================================
 
-fn interpret_result(
-    raw: RawGameResult,
-    white: &mut ManagedEngine,
-    black: &mut ManagedEngine,
-) -> GameResult {
+fn interpret_result(raw: RawGameResult, white: &mut ManagedEngine, black: &mut ManagedEngine) -> GameResult {
     // Convert white_score to dev_score
-    let dev_score = if white.role == EngineRole::Dev {
-        raw.white_score
-    } else {
-        raw.white_score.flipped()
-    };
+    let dev_score = if white.role == EngineRole::Dev { raw.white_score } else { raw.white_score.flipped() };
 
     // Convert termination
     let termination = raw.termination.map(|t| {
@@ -609,11 +601,7 @@ fn interpret_result(
         Termination {
             kind: t.kind,
             details: t.details,
-            faulty_engine: if t.kind == TerminationKind::Stopped {
-                None
-            } else {
-                Some(faulty_engine.role.as_faulty())
-            },
+            faulty_engine: if t.kind == TerminationKind::Stopped { None } else { Some(faulty_engine.role.as_faulty()) },
         }
     });
 
