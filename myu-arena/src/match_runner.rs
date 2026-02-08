@@ -129,6 +129,9 @@ pub struct GameConfig {
     pub time_ms: u64,
     pub timeout_leniency: f64,
     pub logs_dir: Option<PathBuf>,
+    pub dev_settings: Option<serde_json::Map<String, serde_json::Value>>,
+    pub base_settings: Option<serde_json::Map<String, serde_json::Value>>,
+    pub engine_settings: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 // =============================================================================
@@ -163,6 +166,26 @@ impl EngineRole {
             EngineRole::Base => FaultyEngine::Base,
         }
     }
+
+    fn settings(self, config: &GameConfig) -> Vec<serde_json::Map<String, serde_json::Value>> {
+        let mut settings = Vec::new();
+        if let Some(s) = &config.engine_settings {
+            settings.push(s.clone());
+        }
+        match self {
+            EngineRole::Dev => {
+                if let Some(s) = &config.dev_settings {
+                    settings.push(s.clone());
+                }
+            }
+            EngineRole::Base => {
+                if let Some(s) = &config.base_settings {
+                    settings.push(s.clone());
+                }
+            }
+        }
+        settings
+    }
 }
 
 /// A managed engine that tracks health and handles spawn/reset
@@ -187,6 +210,7 @@ impl ManagedEngine {
                 config.timeout_leniency,
                 config.logs_dir.clone(),
                 self.stop_flag.clone(),
+                self.role.settings(config),
             )?;
             engine.sync()?;
             self.engine = Some(engine);
@@ -284,9 +308,21 @@ impl MatchRunner {
         opening_book: OpeningBook,
         concurrency: usize,
         stop_flag: Arc<AtomicBool>,
+        dev_settings: Option<serde_json::Map<String, serde_json::Value>>,
+        base_settings: Option<serde_json::Map<String, serde_json::Value>>,
+        engine_settings: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Self {
         Self {
-            config: Arc::new(GameConfig { dev_path, base_path, time_ms, timeout_leniency, logs_dir }),
+            config: Arc::new(GameConfig {
+                dev_path,
+                base_path,
+                time_ms,
+                timeout_leniency,
+                logs_dir,
+                dev_settings,
+                base_settings,
+                engine_settings,
+            }),
             opening_book,
             concurrency,
             stop_flag,

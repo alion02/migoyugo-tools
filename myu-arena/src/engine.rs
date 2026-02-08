@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::protocol::{EngineMsg, UserMsg, deserialize, limits::Limits, mv::Mv, serialize};
+use crate::protocol::{EngineMsg, UserMsg, limits::Limits, mv::Mv};
 
 /// A communication log entry
 #[derive(Debug, Clone)]
@@ -92,6 +92,7 @@ impl Engine {
         timeout_leniency: f64,
         logs_dir: Option<PathBuf>,
         stop_flag: Arc<AtomicBool>,
+        settings: Vec<serde_json::Map<String, serde_json::Value>>,
     ) -> Result<Self, String> {
         let name = name.into();
         let mut child = Command::new(path)
@@ -127,7 +128,7 @@ impl Engine {
                         if trimmed.is_empty() {
                             continue;
                         }
-                        match deserialize::<EngineMsg>(trimmed) {
+                        match serde_json::from_str::<EngineMsg>(trimmed) {
                             Ok(msg) => {
                                 if msg_tx.send(Ok((msg, trimmed.to_string()))).is_err() {
                                     break;
@@ -165,6 +166,11 @@ impl Engine {
 
         // Wait for engine identification
         engine.wait_for_about()?;
+
+        // Send settings
+        for s in settings {
+            engine.set(s)?;
+        }
 
         Ok(engine)
     }
@@ -226,11 +232,16 @@ impl Engine {
     }
 
     fn send_message(&mut self, msg: &UserMsg) -> Result<(), String> {
-        let line = serialize(msg).map_err(|e| format!("Serialization error: {e}"))?;
+        let line = serde_json::to_string(msg).map_err(|e| format!("Serialization error: {e}"))?;
         self.log(LogDirection::Sent, &line);
         writeln!(self.stdin, "{line}").map_err(|e| format!("Write error: {e}"))?;
         self.stdin.flush().map_err(|e| format!("Flush error: {e}"))?;
         Ok(())
+    }
+
+    /// Send Set command
+    pub fn set(&mut self, settings: serde_json::Map<String, serde_json::Value>) -> Result<(), String> {
+        self.send_message(&UserMsg::Set(settings))
     }
 
     fn recv_message_timeout(&mut self, timeout: Duration) -> Result<Option<EngineMsg>, String> {
