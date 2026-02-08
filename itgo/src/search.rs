@@ -1,10 +1,10 @@
 use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*};
 
 use multiptr::MultiMut;
-use myu_protocol::Eval;
 
 use crate::{
     game::{Frame, MAX_LEN},
+    protocol::Eval,
     shared::Shared,
     state::{GenMvData, apply, gen_mv, make_migo, make_yugo},
     thread::Thread,
@@ -35,7 +35,7 @@ pub fn search(
     if thread.tick_countdown() {
         if !shared.active()
             || thread.nodes >= shared.limits.nodes
-            || shared.started_at.elapsed().as_millis() >= shared.limits.ms as u128
+            || shared.started_at.elapsed().as_millis() >= shared.limits.time as u128
         {
             resume_unwind(Box::new(ExitSearch));
         }

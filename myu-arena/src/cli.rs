@@ -10,6 +10,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Run SPRT test between two engines
@@ -38,6 +39,18 @@ pub struct TestArgs {
     /// Path to the 'base' engine executable
     #[arg(long)]
     pub base: PathBuf,
+
+    /// JSON settings for the dev engine (string or file path)
+    #[arg(long)]
+    pub dev_settings: Option<String>,
+
+    /// JSON settings for the base engine (string or file path)
+    #[arg(long)]
+    pub base_settings: Option<String>,
+
+    /// JSON settings for both engines (string or file path)
+    #[arg(long)]
+    pub engine_settings: Option<String>,
 
     /// SPRT alpha (false positive rate)
     #[arg(long, default_value = "0.05")]

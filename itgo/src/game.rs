@@ -1,9 +1,11 @@
 use std::{ptr::null_mut, simd::prelude::*};
 
 use multiptr::MultiMut;
-use myu_protocol::Sq;
 
-use crate::state::{DirectMakeResult, checked_direct_make};
+use crate::{
+    protocol::mv::Mv,
+    state::{DirectMakeResult, checked_direct_make},
+};
 
 const LOOKBEHIND: usize = 1;
 const LOOKAHEAD: usize = 0;
@@ -46,9 +48,12 @@ impl Game {
         unsafe { MultiMut::from_slice_index(&mut self.stack, self.index) }
     }
 
-    pub fn play(&mut self, mvs: &[Sq]) -> Result<(), &'static str> {
+    pub fn play(&mut self, mvs: &[Mv], from_start: bool) -> Result<(), &'static str> {
         let index = self.index;
         let err = 'update: {
+            if from_start {
+                self.undo_all();
+            }
             for mv in mvs {
                 match checked_direct_make(self.frame_ptr(), mv.raw()) {
                     DirectMakeResult::Ok => (),
@@ -72,7 +77,7 @@ impl Game {
         Ok(())
     }
 
-    pub fn reset(&mut self) {
+    pub fn undo_all(&mut self) {
         self.index = LOOKBEHIND;
     }
 
