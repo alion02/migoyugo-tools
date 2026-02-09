@@ -49,8 +49,9 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                         let result =
                             catch_unwind(AssertUnwindSafe(|| search(&shared, thread, f, depth, -i32::MAX, i32::MAX)));
                         match result {
-                            Ok((eval, mv)) => {
-                                best = Mv::from_raw(mv);
+                            Ok(eval) => {
+                                best = Mv::from_raw(f.pv[0]);
+                                let pv = f.pv[..f.pv_len].iter().map(|&mv| Mv::from_raw(mv).unwrap()).collect();
                                 let eval = convert_eval(f, eval);
                                 let time_ns = shared.started_at.elapsed().as_nanos().max(1);
                                 let time = (time_ns / 1_000_000) as u64;
@@ -58,16 +59,7 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                                 let evals = thread.evals;
                                 let knps = (nodes as u128 * 1_000_000 / time_ns) as u64;
                                 let keps = (evals as u128 * 1_000_000 / time_ns) as u64;
-                                send(&EngineMsg::Info {
-                                    pv: vec![best.unwrap()],
-                                    eval,
-                                    depth,
-                                    time,
-                                    nodes,
-                                    knps,
-                                    evals,
-                                    keps,
-                                });
+                                send(&EngineMsg::Info { pv, eval, depth, time, nodes, knps, evals, keps });
                             }
                             Err(e) => {
                                 if e.downcast_ref::<ExitSearch>().is_none() {

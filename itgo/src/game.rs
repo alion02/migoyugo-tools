@@ -3,7 +3,7 @@ use std::{ptr::null_mut, simd::prelude::*};
 use multiptr::MultiMut;
 
 use crate::{
-    protocol::mv::Mv,
+    protocol::{limits::MAX_DEPTH, mv::Mv},
     state::{DirectMakeResult, checked_direct_make},
 };
 
@@ -38,6 +38,8 @@ impl Game {
                     ply,
                     killers: [0, 1],
                     history: histories[ply as usize & 1],
+                    pv: [0; _],
+                    pv_len: 0,
                 })
                 .collect(),
             index: LOOKBEHIND,
@@ -92,18 +94,13 @@ impl Game {
         for i in self.index - LOOKBEHIND..self.index + LOOKAHEAD + 1 {
             let this = &mut self.stack[i];
             let other = game.stack[i];
-            *this = Frame {
-                opp_migo: other.opp_migo,
-                opp_yugo: other.opp_yugo,
-                opp_makes_yugo: other.opp_makes_yugo,
-                opp_makes_igo: other.opp_makes_igo,
-                opp_too_long: other.opp_too_long,
-                score: other.score,
-                psqt_value: other.psqt_value,
-                ply: this.ply,
-                killers: this.killers,
-                history: this.history,
-            }
+            this.opp_migo = other.opp_migo;
+            this.opp_yugo = other.opp_yugo;
+            this.opp_makes_yugo = other.opp_makes_yugo;
+            this.opp_makes_igo = other.opp_makes_igo;
+            this.opp_too_long = other.opp_too_long;
+            this.score = other.score;
+            this.psqt_value = other.psqt_value;
         }
     }
 }
@@ -120,6 +117,8 @@ pub struct Frame {
     pub ply: i32,
     pub killers: [u8; 2],
     pub history: *mut i8x64,
+    pub pv: [u8; MAX_DEPTH as usize],
+    pub pv_len: usize,
 }
 
 unsafe impl Send for Frame {}

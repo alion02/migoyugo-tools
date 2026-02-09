@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+pub const MAX_DEPTH: u32 = 64;
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct Limits {
@@ -13,6 +15,6 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { depth: 64, nodes: !0, time: !0 }
+        Self { depth: MAX_DEPTH, nodes: !0, time: !0 }
     }
 }

@@ -31,7 +31,7 @@ pub fn search(
     mut depth: u32,
     mut alpha: i32,
     beta: i32,
-) -> (i32, u8) {
+) -> i32 {
     if thread.tick_countdown() {
         if !shared.active()
             || thread.nodes >= shared.limits.nodes
@@ -45,7 +45,9 @@ pub fn search(
     let GenMvData { playable, makes_yugo } = gen_mv(f);
     let makes_igo = f[-1].opp_makes_igo & playable;
     if makes_igo != 0 {
-        return (MAX_VALUE - (f.ply + 1), makes_igo.trailing_zeros() as u8); // terminal state is technically the *next* ply
+        f.pv[0] = makes_igo.trailing_zeros() as u8;
+        f.pv_len = 1;
+        return MAX_VALUE - (f.ply + 1); // terminal state is technically the *next* ply
     }
     if playable == 0 {
         // Wego: no legal moves
@@ -54,7 +56,8 @@ pub fn search(
             Ordering::Equal => 0,
             Ordering::Less => f.ply - MAX_VALUE,
         };
-        return (best_value, !0);
+        f.pv_len = 0;
+        return best_value;
     }
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
@@ -70,12 +73,12 @@ pub fn search(
                 } else {
                     let f = f + 1;
                     apply(f, new, depth >= 2);
-                    -search(shared, thread, f, depth, -beta, -alpha).0
+                    -search(shared, thread, f, depth, -beta, -alpha)
                 };
                 if value > best_value {
                     best_value = value;
-                    best_mv = mv;
                     if value > alpha {
+                        best_mv = mv;
                         if value >= beta {
                             $on_cut
                         }
@@ -132,6 +135,7 @@ pub fn search(
         }
     }
     if best_value >= beta {
+        // cut
         if f.killers[0] != best_mv {
             if f.killers[1] != best_mv {
                 f.killers[1] = best_mv;
@@ -139,6 +143,20 @@ pub fn search(
                 f.killers = [best_mv, f.killers[0]];
             }
         }
+    } else if best_mv != !0 {
+        // pv
+        if depth == 0 {
+            f.pv[0] = best_mv;
+            f.pv_len = 1;
+        } else {
+            let [ref mut f, ref n] = *f.as_mut_array(0);
+            let len = n.pv_len;
+            f.pv[0] = best_mv;
+            f.pv[1..][..len].copy_from_slice(&n.pv[..len]);
+            f.pv_len = len + 1;
+        }
+    } else {
+        // all
     }
-    (best_value, best_mv)
+    best_value
 }
