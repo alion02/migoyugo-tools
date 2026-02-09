@@ -178,6 +178,7 @@ trap - EXIT
 
 # Prepare output directory
 mkdir -p "$RESULT_DIR"
+GAMES_FILE="$RESULT_DIR/games_$(date +%s).txt"
 
 echo ""
 echo "=== Running SPRT ==="
@@ -188,4 +189,5 @@ exec cargo run --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p myu-arena -
     --dev "$TEST_DIR/dev" \
     --base "$TEST_DIR/base" \
     --logs-dir "$RESULT_DIR" \
+    --games-file "$GAMES_FILE" \
     "${ARENA_ARGS[@]}"
