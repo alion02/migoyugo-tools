@@ -75,8 +75,9 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                     shared.set_active(false);
                 }
                 Cmd::Debug => {
-                    eprintln!("White histories: {:?}", histories[0]);
-                    eprintln!("Black histories: {:?}", histories[1]);
+                    // TODO: 2d, colorful, pretty print histories
+                    eprintln!("White histories {:?}", histories[0]);
+                    eprintln!("Black histories {:?}", histories[1]);
                 }
             }
         }
