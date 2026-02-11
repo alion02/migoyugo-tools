@@ -35,6 +35,8 @@ impl Game {
                     opp_too_long: 0,
                     score: 0,
                     psqt_value: 0,
+                    hash: 0,
+
                     ply,
                     killers: [0, 1],
                     history: histories[ply as usize & 1],
@@ -101,6 +103,7 @@ impl Game {
             this.opp_too_long = other.opp_too_long;
             this.score = other.score;
             this.psqt_value = other.psqt_value;
+            this.hash = other.hash;
         }
     }
 }
@@ -114,6 +117,8 @@ pub struct Frame {
     pub opp_too_long: u64,
     pub score: i32,
     pub psqt_value: i32,
+    pub hash: u64,
+
     pub ply: i32,
     pub killers: [u8; 2],
     pub history: *mut i8x64,

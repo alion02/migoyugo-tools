@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*};
+use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic::Ordering::Relaxed};
 
 use multiptr::MultiMut;
 
@@ -6,7 +6,7 @@ use crate::{
     game::{Frame, MAX_LEN},
     protocol::Eval,
     shared::Shared,
-    state::{GenMvData, apply, gen_mv, make_migo, make_yugo},
+    state::{apply, make_migo, make_yugo, occ},
     thread::Thread,
 };
 
@@ -42,7 +42,8 @@ pub fn search(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    let GenMvData { playable, makes_yugo } = gen_mv(f);
+    let mut playable = !occ(f) & !f[-1].opp_too_long;
+    let makes_yugo = f[-1].opp_makes_yugo;
     let makes_igo = f[-1].opp_makes_igo & playable;
     if makes_igo != 0 {
         f.pv[0] = makes_igo.trailing_zeros() as u8;
@@ -87,6 +88,11 @@ pub fn search(
                 }
             };
         }
+        let tt_mv = shared.tt[f.hash].mv.load(Relaxed);
+        if playable & 1 << tt_mv != 0 {
+            try_mv!(tt_mv, break 'moves);
+            playable &= !(1 << tt_mv);
+        }
         let killer_0 = 1 << f.killers[0];
         if playable & killer_0 != 0 {
             try_mv!(f.killers[0], break 'moves);
@@ -95,14 +101,15 @@ pub fn search(
         if playable & killer_1 != 0 {
             try_mv!(f.killers[1], break 'moves);
         }
-        let mut searched = killer_0 | killer_1;
-        let mut mvs = makes_yugo & !searched;
+        playable &= !killer_0;
+        playable &= !killer_1;
+        let mut mvs = makes_yugo & playable;
         while mvs != 0 {
             try_mv!(mvs.trailing_zeros() as u8, break 'moves);
             mvs &= mvs - 1;
         }
-        searched |= makes_yugo;
-        let mut mvs = playable & !searched;
+        playable &= !makes_yugo;
+        let mut mvs = playable;
         if depth == 0 {
             while mvs != 0 {
                 try_mv!(mvs.trailing_zeros() as u8, break 'moves);
@@ -133,6 +140,9 @@ pub fn search(
             failed |= 1 << mv;
             mvs &= !(1 << mv);
         }
+    }
+    if best_mv != !0 {
+        shared.tt[f.hash].mv.store(best_mv, Relaxed);
     }
     if best_value >= beta {
         // cut

@@ -2,7 +2,10 @@ use std::{arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*};
 
 use multiptr::MultiMut;
 
-use crate::game::Frame;
+use crate::{
+    game::Frame,
+    tt::{HASH_STM, hash_migo, hash_yugo},
+};
 
 pub static DIRS: [u64x4; 8] = {
     let mut simd_dirs = [[0u64; 4]; 8];
@@ -78,6 +81,7 @@ pub struct MakeData {
     pub yugo: u64,
     pub score: i32,
     pub psqt_value: i32,
+    pub hash: u64,
 }
 
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
@@ -86,6 +90,7 @@ pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
         yugo: f[-1].opp_yugo,
         score: f.score,
         psqt_value: f.psqt_value + PSQT_MIGO[mv as usize],
+        hash: f.hash ^ hash_migo()[mv as usize],
     }
 }
 
@@ -94,6 +99,7 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     let yugo = f[-1].opp_yugo | 1 << mv;
     let mut score = f.score;
     let mut psqt_value = f.psqt_value + PSQT_YUGO[mv as usize];
+    let mut hash = f.hash ^ hash_yugo()[mv as usize];
     let mut masks = Simd::splat(migo | yugo);
     masks &= masks >> DIRS[1];
     masks &= masks >> DIRS[2];
@@ -104,12 +110,14 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     let lines = masks.reduce_or();
     let mut remove = migo & lines;
     while remove != 0 {
-        psqt_value -= PSQT_MIGO[remove.trailing_zeros() as usize];
+        let idx = remove.trailing_zeros() as usize;
+        psqt_value -= PSQT_MIGO[idx];
+        hash ^= hash_yugo()[idx];
         remove &= remove - 1;
     }
     migo &= !lines;
     score += unsafe { _mm256_movemask_pd(transmute(has_line.simd_ne(Simd::default()))) }.count_ones() as i32;
-    MakeData { migo, yugo, score, psqt_value }
+    MakeData { migo, yugo, score, psqt_value, hash }
 }
 
 pub fn apply(mut f: MultiMut<Frame>, make: MakeData, compute_aux: bool) {
@@ -130,6 +138,7 @@ pub fn apply(mut f: MultiMut<Frame>, make: MakeData, compute_aux: bool) {
     f.opp_yugo = make.yugo;
     f.score = -make.score;
     f.psqt_value = -make.psqt_value;
+    f.hash = make.hash ^ HASH_STM;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
