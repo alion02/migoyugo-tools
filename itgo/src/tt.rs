@@ -38,12 +38,12 @@ unsafe impl Sync for Table {}
 
 pub struct Entry {
     pub mv: AtomicU8,
+    pub sig: AtomicU8,
 }
 
-#[expect(clippy::derivable_impls)]
 impl Default for Entry {
     fn default() -> Self {
-        Self { mv: 0u8.into() }
+        Self { mv: 0u8.into(), sig: 0u8.into() }
     }
 }
 

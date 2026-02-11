@@ -60,6 +60,9 @@ pub fn search(
         f.pv_len = 0;
         return best_value;
     }
+    let tt_entry = &shared.tt[f.hash];
+    let tt_sig = tt_entry.sig.load(Relaxed);
+    let curr_sig = f.hash as u8;
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
@@ -88,8 +91,10 @@ pub fn search(
                 }
             };
         }
-        let tt_mv = shared.tt[f.hash].mv.load(Relaxed);
-        if playable & 1 << tt_mv != 0 {
+        if tt_sig == curr_sig
+            && let tt_mv = tt_entry.mv.load(Relaxed)
+            && playable & 1 << tt_mv != 0
+        {
             try_mv!(tt_mv, break 'moves);
             playable &= !(1 << tt_mv);
         }
@@ -142,7 +147,8 @@ pub fn search(
         }
     }
     if best_mv != !0 {
-        shared.tt[f.hash].mv.store(best_mv, Relaxed);
+        tt_entry.mv.store(best_mv, Relaxed);
+        tt_entry.sig.store(curr_sig, Relaxed);
     }
     if best_value >= beta {
         // cut
