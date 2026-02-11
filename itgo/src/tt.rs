@@ -20,6 +20,10 @@ impl Table {
         *self = Self::new(new_len);
     }
 
+    pub fn clear(&mut self) {
+        self.resize(self.raw.len());
+    }
+
     pub fn to_index(&self, hash: u64) -> usize {
         ((hash as u128 * self.raw.len() as u128) >> 64) as usize
     }
