@@ -5,6 +5,7 @@ use multiptr::MultiMut;
 use crate::{
     game::Frame,
     tt::{HASH_STM, hash_migo, hash_yugo},
+    util::assume,
 };
 
 pub static DIRS: [u64x4; 8] = {
@@ -85,6 +86,7 @@ pub struct MakeData {
 }
 
 pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
+    assume!((mv as usize) < 64);
     MakeData {
         migo: f[-1].opp_migo | 1 << mv,
         yugo: f[-1].opp_yugo,
@@ -95,6 +97,7 @@ pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
 }
 
 pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
+    assume!((mv as usize) < 64);
     let mut migo = f[-1].opp_migo;
     let yugo = f[-1].opp_yugo | 1 << mv;
     let mut score = f.score;

@@ -33,7 +33,7 @@ impl Index<u64> for Table {
     type Output = Entry;
 
     fn index(&self, hash: u64) -> &Self::Output {
-        &self.raw[self.to_index(hash)]
+        unsafe { self.raw.get_unchecked(self.to_index(hash)) }
     }
 }
 

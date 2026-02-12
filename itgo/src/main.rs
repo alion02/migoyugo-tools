@@ -13,6 +13,7 @@ pub mod shared;
 pub mod state;
 pub mod thread;
 pub mod tt;
+pub mod util;
 
 use std::{
     borrow::Cow,
