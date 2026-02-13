@@ -51,7 +51,7 @@ impl Default for Entry {
     }
 }
 
-static mut HASH: [u64; 128] = [0; _];
+static mut HASH: [u64; 256] = [0; _];
 
 pub const HASH_STM: u64 = 0x0d0575c6271b1089;
 
@@ -66,10 +66,23 @@ pub(crate) fn init_hash() {
     }
 }
 
-pub(crate) fn hash_migo() -> &'static [u64; 64] {
-    unsafe { HASH[..64].as_array().unwrap() }
-}
+#[derive(Debug, Clone, Copy)]
+pub struct SideHash(&'static [u64; 128]);
 
-pub(crate) fn hash_yugo() -> &'static [u64; 64] {
-    unsafe { HASH[64..].as_array().unwrap() }
+impl SideHash {
+    pub(crate) fn white() -> Self {
+        Self(unsafe { HASH[..128].as_array().unwrap() })
+    }
+
+    pub(crate) fn black() -> Self {
+        Self(unsafe { HASH[128..].as_array().unwrap() })
+    }
+
+    pub(crate) fn migo(&self) -> &'static [u64; 64] {
+        self.0[..64].as_array().unwrap()
+    }
+
+    pub(crate) fn yugo(&self) -> &'static [u64; 64] {
+        self.0[64..].as_array().unwrap()
+    }
 }

@@ -50,10 +50,10 @@ fn main() {
         }
     });
     let Ok(mut msg) = line_rx.recv() else { return };
+    tt::init_hash();
     let mut settings = Settings::default();
     let shared = Arc::new(RwLock::new(Shared::new(settings.tt_len())));
     let cmd_tx = searcher::start();
-    tt::init_hash();
     loop {
         let stop = || shared.read().set_active(false);
         let blocking_command = settings.blocking_command;

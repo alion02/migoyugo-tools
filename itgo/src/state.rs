@@ -2,11 +2,7 @@ use std::{arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*};
 
 use multiptr::MultiMut;
 
-use crate::{
-    game::Frame,
-    tt::{HASH_STM, hash_migo, hash_yugo},
-    util::assume,
-};
+use crate::{game::Frame, tt::HASH_STM, util::assume};
 
 pub static DIRS: [u64x4; 8] = {
     let mut simd_dirs = [[0u64; 4]; 8];
@@ -92,7 +88,7 @@ pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
         yugo: f[-1].opp_yugo,
         score: f.score,
         psqt_value: f.psqt_value + PSQT_MIGO[mv as usize],
-        hash: f.hash ^ hash_migo()[mv as usize],
+        hash: f.hash ^ f.side_hash.migo()[mv as usize],
     }
 }
 
@@ -102,7 +98,7 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     let yugo = f[-1].opp_yugo | 1 << mv;
     let mut score = f.score;
     let mut psqt_value = f.psqt_value + PSQT_YUGO[mv as usize];
-    let mut hash = f.hash ^ hash_yugo()[mv as usize];
+    let mut hash = f.hash ^ f.side_hash.yugo()[mv as usize];
     let mut masks = Simd::splat(migo | yugo);
     masks &= masks >> DIRS[1];
     masks &= masks >> DIRS[2];
@@ -115,7 +111,7 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     while remove != 0 {
         let idx = remove.trailing_zeros() as usize;
         psqt_value -= PSQT_MIGO[idx];
-        hash ^= hash_yugo()[idx];
+        hash ^= f.side_hash.migo()[idx];
         remove &= remove - 1;
     }
     migo &= !lines;
