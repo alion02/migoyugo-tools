@@ -1,7 +1,8 @@
 use std::{
+    array,
     mem::take,
     ops::Index,
-    sync::{Mutex, atomic::AtomicU8},
+    sync::{Mutex, atomic::AtomicU32},
 };
 
 use rand::prelude::*;
@@ -40,15 +41,59 @@ impl Index<u64> for Table {
 unsafe impl Send for Table {}
 unsafe impl Sync for Table {}
 
+#[repr(align(16))]
 pub struct Entry {
-    pub mv: AtomicU8,
-    pub sig: AtomicU8,
+    pub raw: [AtomicU32; 4],
 }
 
 impl Default for Entry {
     fn default() -> Self {
-        Self { mv: 0u8.into(), sig: 0u8.into() }
+        Self { raw: array::from_fn(|_| Packed::default().raw().into()) }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Packed(u32);
+
+impl Packed {
+    pub fn new(mv: u8, signature: u32, depth: u32, generation: u8) -> Self {
+        Self((mv as u32) | signature | depth << 16 | (generation as u32) << 24)
+    }
+
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    pub fn mv(self) -> u8 {
+        self.0 as u8 & 0x3F
+    }
+
+    pub fn signature_matches(self, signature: u32) -> bool {
+        self.0 & to_signature(!0) == signature
+    }
+
+    pub fn depth(self) -> u32 {
+        self.0 >> 16 & 0xFF
+    }
+
+    pub fn generation(self) -> u8 {
+        (self.0 >> 24) as u8
+    }
+
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+}
+
+#[expect(clippy::derivable_impls)]
+impl Default for Packed {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+pub fn to_signature(hash: u64) -> u32 {
+    (hash as u32 & ((1 << 10) - 1)) << 6
 }
 
 static mut HASH: [u64; 256] = [0; _];

@@ -8,6 +8,7 @@ use crate::{
     shared::Shared,
     state::{apply, make_migo, make_yugo, occ},
     thread::Thread,
+    tt::{Packed, to_signature},
 };
 
 pub const MAX_VALUE: i32 = 0x7FFF;
@@ -28,7 +29,7 @@ pub fn search(
     shared: &Shared,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
-    mut depth: u32,
+    depth: u32,
     mut alpha: i32,
     beta: i32,
 ) -> i32 {
@@ -61,12 +62,11 @@ pub fn search(
         return best_value;
     }
     let tt_entry = &shared.tt[f.hash];
-    let tt_sig = tt_entry.sig.load(Relaxed);
-    let curr_sig = f.hash as u8;
+    let signature = to_signature(f.hash);
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
-    depth -= 1;
     'moves: {
+        let depth = depth - 1;
         macro_rules! try_mv {
             ($mv:expr, $on_cut:expr) => {
                 let mv = $mv;
@@ -91,12 +91,15 @@ pub fn search(
                 }
             };
         }
-        if tt_sig == curr_sig
-            && let tt_mv = tt_entry.mv.load(Relaxed)
-            && playable & 1 << tt_mv != 0
-        {
-            try_mv!(tt_mv, break 'moves);
-            playable &= !(1 << tt_mv);
+        for raw in &tt_entry.raw {
+            let packed = Packed::from_raw(raw.load(Relaxed));
+            if packed.signature_matches(signature)
+                && let tt_mv = packed.mv()
+                && playable & 1 << tt_mv != 0
+            {
+                try_mv!(tt_mv, break 'moves);
+                playable &= !(1 << tt_mv);
+            }
         }
         let killer_0 = 1 << f.killers[0];
         if playable & killer_0 != 0 {
@@ -147,8 +150,24 @@ pub fn search(
         }
     }
     if best_mv != !0 {
-        tt_entry.mv.store(best_mv, Relaxed);
-        tt_entry.sig.store(curr_sig, Relaxed);
+        let generation = shared.generation.load(Relaxed);
+        let mut slot = None;
+        let mut priority = i32::MIN;
+        for raw in &tt_entry.raw {
+            let packed = Packed::from_raw(raw.load(Relaxed));
+            if packed.signature_matches(signature) {
+                slot = (packed.depth() < depth).then_some(raw);
+                break;
+            }
+            let this_priority = packed.generation().abs_diff(generation) as i32 - packed.depth() as i32;
+            if this_priority > priority {
+                slot = Some(raw);
+                priority = this_priority;
+            }
+        }
+        if let Some(slot) = slot {
+            slot.store(Packed::new(best_mv, signature, depth, generation).raw(), Relaxed);
+        }
     }
     if best_value >= beta {
         // cut

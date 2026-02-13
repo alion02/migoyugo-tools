@@ -1,5 +1,5 @@
 use std::{
-    sync::atomic::{self, AtomicBool},
+    sync::atomic::{self, AtomicBool, AtomicU8},
     time::Instant,
 };
 
@@ -11,6 +11,7 @@ pub struct Shared {
     pub limits: Limits,
     pub game: Game,
     pub tt: tt::Table,
+    pub generation: AtomicU8,
 }
 
 impl Shared {
@@ -21,6 +22,7 @@ impl Shared {
             limits: Default::default(),
             game: Game::default(),
             tt: tt::Table::new(tt_len),
+            generation: 127u8.into(),
         }
     }
 
@@ -38,5 +40,12 @@ impl Shared {
         self.started_at = started_at;
         *self.active.get_mut() = true;
         self.limits = limits;
+        *self.generation.get_mut() = self.generation.get_mut().wrapping_add(1);
+    }
+
+    pub fn reset(&mut self) {
+        self.game.undo_all();
+        self.tt.clear();
+        *self.generation.get_mut() = 127;
     }
 }
