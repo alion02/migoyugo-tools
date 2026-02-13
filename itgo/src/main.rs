@@ -86,7 +86,7 @@ fn main() {
                 }
                 UserMsg::Moves(mvs) => {
                     handle_active();
-                    if let Err(e) = shared.write().unwrap().game.play(&mvs, false) {
+                    if let Err(e) = shared.write().unwrap().game.play(&mvs, true) {
                         send_error(e);
                     }
                 }
