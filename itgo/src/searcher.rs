@@ -2,12 +2,11 @@ use std::{
     array,
     panic::{AssertUnwindSafe, catch_unwind, panic_any},
     simd::prelude::*,
-    sync::{
-        Arc, RwLock,
-        mpsc::{SyncSender, sync_channel},
-    },
+    sync::mpsc::{SyncSender, sync_channel},
     thread::spawn,
 };
+
+use parking_lot::{ArcRwLockReadGuard, RawRwLock};
 
 use crate::{
     game::Game,
@@ -21,11 +20,11 @@ use crate::{
 pub enum Cmd {
     Reset,
     Sync,
-    Go,
+    Go { shared: ArcRwLockReadGuard<RawRwLock, Shared> },
     Debug,
 }
 
-pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
+pub fn start() -> SyncSender<Cmd> {
     let (tx, rx) = sync_channel(0);
     spawn(move || {
         let mut histories = [i8x64::default(); 2];
@@ -39,8 +38,7 @@ pub fn start(shared: Arc<RwLock<Shared>>) -> SyncSender<Cmd> {
                     game.searcher_reset();
                 }
                 Cmd::Sync => { /* rendezvous with main thread */ }
-                Cmd::Go => {
-                    let shared = shared.read().unwrap();
+                Cmd::Go { shared } => {
                     game.sync_with(&shared.game);
                     let f = game.frame_ptr();
                     let thread = &mut Thread::new(shared.limits.nodes);

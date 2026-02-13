@@ -15,10 +15,12 @@ pub mod thread;
 use std::{
     borrow::Cow,
     io::stdin,
-    sync::{Arc, RwLock, mpsc::channel},
+    sync::{Arc, mpsc::channel},
     thread::spawn,
     time::Instant,
 };
+
+use parking_lot::RwLock;
 
 use crate::{
     protocol::{
@@ -46,12 +48,12 @@ fn main() {
     });
     let Ok(mut msg) = line_rx.recv() else { return };
     let shared = Arc::<RwLock<Shared>>::default();
-    let cmd_tx = searcher::start(shared.clone());
+    let cmd_tx = searcher::start();
     let mut settings = Settings::default();
     loop {
-        let stop = || shared.read().unwrap().set_active(false);
+        let stop = || shared.read().set_active(false);
         let handle_active = || {
-            if shared.read().unwrap().active() {
+            if shared.read().active() {
                 match settings.blocking_command {
                     BlockingCommand::Warn => {
                         send_warn(
@@ -74,19 +76,19 @@ fn main() {
                 }
                 UserMsg::Play(mvs) => {
                     handle_active();
-                    if let Err(e) = shared.write().unwrap().game.play(&mvs, false) {
+                    if let Err(e) = shared.write().game.play(&mvs, false) {
                         send_error(e);
                     }
                 }
                 UserMsg::Undo(count) => {
                     handle_active();
-                    if let Err(e) = shared.write().unwrap().game.undo(count) {
+                    if let Err(e) = shared.write().game.undo(count) {
                         send_error(e);
                     }
                 }
                 UserMsg::Moves(mvs) => {
                     handle_active();
-                    if let Err(e) = shared.write().unwrap().game.play(&mvs, true) {
+                    if let Err(e) = shared.write().game.play(&mvs, true) {
                         send_error(e);
                     }
                 }
@@ -94,10 +96,10 @@ fn main() {
                 UserMsg::Reset => {
                     handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
-                    shared.write().unwrap().game.undo_all();
+                    shared.write().game.undo_all();
                 }
                 UserMsg::Sync => {
-                    if shared.read().unwrap().active() {
+                    if shared.read().active() {
                         // searcher thread is not searching right now, but it might be doing other things
                         // rendezvous with it (0 capacity channel enforces synchronous handshake behavior)
                         cmd_tx.send(Cmd::Sync).unwrap();
@@ -107,8 +109,8 @@ fn main() {
                 UserMsg::Go(limits) => {
                     // TODO: handle terminal states, requires minor refactor of terminal checking
                     handle_active();
-                    shared.write().unwrap().go(Instant::now(), limits);
-                    cmd_tx.send(Cmd::Go).unwrap();
+                    shared.write().go(Instant::now(), limits);
+                    cmd_tx.send(Cmd::Go { shared: shared.read_arc() }).unwrap();
                 }
                 UserMsg::Stop => {
                     stop();
