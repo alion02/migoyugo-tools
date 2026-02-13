@@ -121,9 +121,10 @@ fn main() {
             },
             Err(e) => send_error(e.to_string()),
         }
-        let Ok(next) = line_rx.recv() else { return };
+        let Ok(next) = line_rx.recv() else { break };
         msg = next;
     }
+    cmd_tx.send(Cmd::Sync).unwrap();
 }
 
 fn send(msg: &EngineMsg) {
