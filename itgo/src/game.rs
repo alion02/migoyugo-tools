@@ -5,6 +5,7 @@ use multiptr::MultiMut;
 use crate::{
     protocol::{limits::MAX_DEPTH, mv::Mv},
     state::{DirectMakeResult, checked_direct_make},
+    tt::SideHash,
 };
 
 const LOOKBEHIND: usize = 1;
@@ -27,19 +28,25 @@ impl Game {
     pub fn new(histories: [*mut i8x64; 2]) -> Self {
         Self {
             stack: (-(LOOKBEHIND as i32)..(MAX_LEN + LOOKAHEAD) as i32)
-                .map(|ply| Frame {
-                    opp_migo: 0,
-                    opp_yugo: 0,
-                    opp_makes_yugo: 0,
-                    opp_makes_igo: 0,
-                    opp_too_long: 0,
-                    score: 0,
-                    psqt_value: 0,
-                    ply,
-                    killers: [0, 1],
-                    history: histories[ply as usize & 1],
-                    pv: [0; _],
-                    pv_len: 0,
+                .map(|ply| {
+                    let stm = ply as usize & 1;
+                    Frame {
+                        opp_migo: 0,
+                        opp_yugo: 0,
+                        opp_makes_yugo: 0,
+                        opp_makes_igo: 0,
+                        opp_too_long: 0,
+                        score: 0,
+                        psqt_value: 0,
+                        hash: 0,
+
+                        ply,
+                        killers: [0, 1],
+                        history: histories[stm],
+                        side_hash: if stm == 0 { SideHash::white() } else { SideHash::black() },
+                        pv: [0; _],
+                        pv_len: 0,
+                    }
                 })
                 .collect(),
             index: LOOKBEHIND,
@@ -101,6 +108,7 @@ impl Game {
             this.opp_too_long = other.opp_too_long;
             this.score = other.score;
             this.psqt_value = other.psqt_value;
+            this.hash = other.hash;
         }
     }
 }
@@ -114,9 +122,12 @@ pub struct Frame {
     pub opp_too_long: u64,
     pub score: i32,
     pub psqt_value: i32,
+    pub hash: u64,
+
     pub ply: i32,
     pub killers: [u8; 2],
     pub history: *mut i8x64,
+    pub side_hash: SideHash,
     pub pv: [u8; MAX_DEPTH as usize],
     pub pv_len: usize,
 }

@@ -3,22 +3,27 @@ use std::{
     time::Instant,
 };
 
-use crate::{game::Game, protocol::limits::Limits};
+use crate::{game::Game, protocol::limits::Limits, tt};
 
 pub struct Shared {
     pub started_at: Instant,
     pub active: AtomicBool,
     pub limits: Limits,
     pub game: Game,
-}
-
-impl Default for Shared {
-    fn default() -> Self {
-        Self { started_at: Instant::now(), active: false.into(), limits: Default::default(), game: Game::default() }
-    }
+    pub tt: tt::Table,
 }
 
 impl Shared {
+    pub fn new(tt_len: usize) -> Self {
+        Self {
+            started_at: Instant::now(),
+            active: false.into(),
+            limits: Default::default(),
+            game: Game::default(),
+            tt: tt::Table::new(tt_len),
+        }
+    }
+
     pub fn active(&self) -> bool {
         self.active.load(atomic::Ordering::Relaxed)
     }
@@ -33,5 +38,10 @@ impl Shared {
         self.started_at = started_at;
         *self.active.get_mut() = true;
         self.limits = limits;
+    }
+
+    pub fn reset(&mut self) {
+        self.game.undo_all();
+        self.tt.clear();
     }
 }

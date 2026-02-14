@@ -2,6 +2,7 @@
 #![allow(
     clippy::missing_transmute_annotations, // don't care
     clippy::collapsible_if, // less noisy to update
+    static_mut_refs, // actively harmful
 )]
 
 pub mod game;
@@ -11,6 +12,8 @@ pub mod searcher;
 pub mod shared;
 pub mod state;
 pub mod thread;
+pub mod tt;
+pub mod util;
 
 use std::{
     borrow::Cow,
@@ -36,7 +39,7 @@ fn main() {
         name: "Itgo",
         author: "alion02",
         version: env!("VERGEN_GIT_DESCRIBE"),
-        features: &["interactive", "fixed_time", "fixed_nodes", "fixed_depth"],
+        features: &["interactive", "fixed_time", "fixed_nodes", "fixed_depth", "dyn_mem"],
     });
     let (line_tx, line_rx) = channel();
     spawn(move || {
@@ -47,14 +50,16 @@ fn main() {
         }
     });
     let Ok(mut msg) = line_rx.recv() else { return };
-    let shared = Arc::<RwLock<Shared>>::default();
-    let cmd_tx = searcher::start();
+    tt::init_hash();
     let mut settings = Settings::default();
+    let shared = Arc::new(RwLock::new(Shared::new(settings.tt_len())));
+    let cmd_tx = searcher::start();
     loop {
         let stop = || shared.read().set_active(false);
+        let blocking_command = settings.blocking_command;
         let handle_active = || {
             if shared.read().active() {
-                match settings.blocking_command {
+                match blocking_command {
                     BlockingCommand::Warn => {
                         send_warn(
                             "Received blocking command while searching, waiting until search naturally finishes; \
@@ -73,6 +78,11 @@ fn main() {
                         send_warn(format!("Tried to set unknown key `{key}` to `{value}`"));
                     }
                     settings.apply(&patch);
+                    let target_len = settings.tt_len();
+                    if target_len != shared.read().tt.raw.len() {
+                        handle_active();
+                        shared.write().tt.resize(target_len);
+                    }
                 }
                 UserMsg::Play(mvs) => {
                     handle_active();
@@ -96,7 +106,7 @@ fn main() {
                 UserMsg::Reset => {
                     handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
-                    shared.write().game.undo_all();
+                    shared.write().reset();
                 }
                 UserMsg::Sync => {
                     if shared.read().active() {
