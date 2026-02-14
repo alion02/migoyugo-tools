@@ -106,9 +106,7 @@ fn main() {
                 UserMsg::Reset => {
                     handle_active();
                     cmd_tx.send(Cmd::Reset).unwrap();
-                    let mut shared = shared.write();
-                    shared.game.undo_all();
-                    shared.tt.clear();
+                    shared.write().reset();
                 }
                 UserMsg::Sync => {
                     if shared.read().active() {

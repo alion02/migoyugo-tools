@@ -39,4 +39,9 @@ impl Shared {
         *self.active.get_mut() = true;
         self.limits = limits;
     }
+
+    pub fn reset(&mut self) {
+        self.game.undo_all();
+        self.tt.clear();
+    }
 }
