@@ -8,6 +8,7 @@ use crate::{
     shared::Shared,
     state::{apply, make_migo, make_yugo, occ},
     thread::Thread,
+    util::goto,
 };
 
 pub const MAX_VALUE: i32 = 0x7FFF;
@@ -66,113 +67,134 @@ pub fn search(
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
-    'moves: {
-        macro_rules! try_mv {
-            ($mv:expr, $on_cut:expr) => {
-                let mv = $mv;
-                let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
-                let value = if depth == 0 {
-                    thread.evals += 1;
-                    new.score * 20 + new.psqt_value
-                } else {
-                    let f = f + 1;
-                    apply(f, new, depth >= 2);
-                    -search(shared, thread, f, depth, -beta, -alpha)
-                };
-                if value > best_value {
-                    best_value = value;
-                    if value > alpha {
-                        best_mv = mv;
-                        if value >= beta {
-                            $on_cut
-                        }
-                        alpha = value;
-                    }
-                }
+    macro_rules! try_mv {
+        ($mv:expr, $on_cut:expr) => {
+            let mv = $mv;
+            let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
+            let value = if depth == 0 {
+                thread.evals += 1;
+                new.score * 20 + new.psqt_value
+            } else {
+                let f = f + 1;
+                apply(f, new, depth >= 2);
+                -search(shared, thread, f, depth, -beta, -alpha)
             };
-        }
-        if tt_sig == curr_sig
-            && let tt_mv = tt_entry.mv.load(Relaxed)
-            && playable & 1 << tt_mv != 0
+            if value > best_value {
+                best_value = value;
+                if value > alpha {
+                    best_mv = mv;
+                    if value >= beta {
+                        $on_cut
+                    }
+                    alpha = value;
+                }
+            }
+        };
+    }
+    goto!(
         {
-            try_mv!(tt_mv, break 'moves);
-            playable &= !(1 << tt_mv);
-        }
-        let killer_0 = 1 << f.killers[0];
-        if playable & killer_0 != 0 {
-            try_mv!(f.killers[0], break 'moves);
-        }
-        let killer_1 = 1 << f.killers[1];
-        if playable & killer_1 != 0 {
-            try_mv!(f.killers[1], break 'moves);
-        }
-        playable &= !killer_0;
-        playable &= !killer_1;
-        let mut mvs = makes_yugo & playable;
-        while mvs != 0 {
-            try_mv!(mvs.trailing_zeros() as u8, break 'moves);
-            mvs &= mvs - 1;
-        }
-        playable &= !makes_yugo;
-        let mut mvs = playable;
-        if depth == 0 {
+            if tt_sig == curr_sig
+                && let tt_mv = tt_entry.mv.load(Relaxed)
+                && playable & 1 << tt_mv != 0
+            {
+                try_mv!(tt_mv, break 'cut);
+                playable &= !(1 << tt_mv);
+            }
+            let killer_0 = 1 << f.killers[0];
+            if playable & killer_0 != 0 {
+                try_mv!(f.killers[0], break 'killer_cut);
+            }
+            let killer_1 = 1 << f.killers[1];
+            if playable & killer_1 != 0 {
+                try_mv!(f.killers[1], break 'alt_killer_cut);
+            }
+            playable &= !killer_0;
+            playable &= !killer_1;
+            let mut mvs = makes_yugo & playable;
             while mvs != 0 {
-                try_mv!(mvs.trailing_zeros() as u8, break 'moves);
+                try_mv!(mvs.trailing_zeros() as u8, break 'cut);
                 mvs &= mvs - 1;
             }
-            break 'moves;
-        }
-        let mut failed = 0u64;
-        let scores = unsafe { *f.history };
-        while mvs != 0 {
-            let scores = Mask::from_bitmask(mvs).select(scores, Simd::splat(i8::MIN));
-            let mv = Simd::splat(scores.reduce_max()).simd_eq(scores).to_bitmask().trailing_zeros() as u8;
-            try_mv!(mv, {
-                let history = unsafe { &mut *f.history };
-                const HIST_BITS: u32 = 6;
-                let bonus = (depth * depth).min(1 << HIST_BITS) as i32;
-                fn update(entry: &mut i8, direction: i32, change: i32) {
-                    *entry += (direction * change - ((*entry as i32 * change) >> HIST_BITS)) as i8;
+            playable &= !makes_yugo;
+            let mut mvs = playable;
+            if depth == 0 {
+                while mvs != 0 {
+                    try_mv!(mvs.trailing_zeros() as u8, break 'cut);
+                    mvs &= mvs - 1;
                 }
-                update(&mut history[mv as usize], 1, bonus);
-                while failed != 0 {
-                    let mv = failed.trailing_zeros() as u8;
-                    update(&mut history[mv as usize], -1, bonus / 2);
-                    failed &= failed - 1;
-                }
-                break 'moves;
-            });
-            failed |= 1 << mv;
-            mvs &= !(1 << mv);
-        }
-    }
-    if best_mv != !0 {
-        tt_entry.mv.store(best_mv, Relaxed);
-        tt_entry.sig.store(curr_sig, Relaxed);
-    }
-    if best_value >= beta {
-        // cut
-        if f.killers[0] != best_mv {
-            if f.killers[1] != best_mv {
-                f.killers[1] = best_mv;
-            } else {
-                f.killers = [best_mv, f.killers[0]];
+                break 'determine_node_type;
             }
-        }
-    } else if best_mv != !0 {
-        // pv
-        if depth == 0 {
-            f.pv[0] = best_mv;
-            f.pv_len = 1;
-        } else {
-            let [ref mut f, ref n] = *f.as_mut_array(0);
-            let len = n.pv_len;
-            f.pv[0] = best_mv;
-            f.pv[1..][..len].copy_from_slice(&n.pv[..len]);
-            f.pv_len = len + 1;
-        }
-    } else {
-        // all
-    }
+            let mut failed = 0u64;
+            let scores = unsafe { *f.history };
+            while mvs != 0 {
+                let scores = Mask::from_bitmask(mvs).select(scores, Simd::splat(i8::MIN));
+                let mv = Simd::splat(scores.reduce_max()).simd_eq(scores).to_bitmask().trailing_zeros() as u8;
+                try_mv!(mv, {
+                    let history = unsafe { &mut *f.history };
+                    const HIST_BITS: u32 = 6;
+                    let bonus = (depth * depth).min(1 << HIST_BITS) as i32;
+                    fn update(entry: &mut i8, direction: i32, change: i32) {
+                        *entry += (direction * change - ((*entry as i32 * change) >> HIST_BITS)) as i8;
+                    }
+                    update(&mut history[mv as usize], 1, bonus);
+                    while failed != 0 {
+                        let mv = failed.trailing_zeros() as u8;
+                        update(&mut history[mv as usize], -1, bonus / 2);
+                        failed &= failed - 1;
+                    }
+                    break 'cut;
+                });
+                failed |= 1 << mv;
+                mvs &= !(1 << mv);
+            }
+            break 'determine_node_type;
+        },
+        'determine_node_type: {
+            if best_mv != !0 {
+                break 'pv;
+            } else {
+                break 'all;
+            }
+        },
+        'killer_cut: {
+            break 'update_tt;
+        },
+        'alt_killer_cut: {
+            f.killers = [best_mv, f.killers[0]];
+            break 'update_tt;
+        },
+        'cut: {
+            if f.killers[0] != best_mv {
+                if f.killers[1] != best_mv {
+                    f.killers[1] = best_mv;
+                } else {
+                    f.killers = [best_mv, f.killers[0]];
+                }
+            }
+            break 'update_tt;
+        },
+        'pv: {
+            if depth == 0 {
+                f.pv[0] = best_mv;
+                f.pv_len = 1;
+            } else {
+                let [ref mut f, ref n] = *f.as_mut_array(0);
+                let len = n.pv_len;
+                f.pv[0] = best_mv;
+                f.pv[1..][..len].copy_from_slice(&n.pv[..len]);
+                f.pv_len = len + 1;
+            }
+            break 'update_tt;
+        },
+        'all: {
+            break 'end;
+        },
+        'update_tt: {
+            tt_entry.mv.store(best_mv, Relaxed);
+            tt_entry.sig.store(curr_sig, Relaxed);
+            break 'end;
+        },
+        'end: {},
+    );
     best_value
 }
