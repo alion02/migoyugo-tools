@@ -45,9 +45,15 @@ pub struct Entry {
     pub sig: AtomicU8,
 }
 
+impl Entry {
+    pub const fn new() -> Self {
+        Self { mv: AtomicU8::new(0), sig: AtomicU8::new(0) }
+    }
+}
+
 impl Default for Entry {
     fn default() -> Self {
-        Self { mv: 0u8.into(), sig: 0u8.into() }
+        Self::new()
     }
 }
 
