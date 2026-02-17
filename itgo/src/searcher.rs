@@ -44,8 +44,9 @@ pub fn start() -> SyncSender<Cmd> {
                     let thread = &mut Thread::new(shared.limits.nodes);
                     let mut best = None;
                     for depth in 1..=shared.limits.depth {
-                        let result =
-                            catch_unwind(AssertUnwindSafe(|| search(&shared, thread, f, depth, -i32::MAX, i32::MAX)));
+                        let result = catch_unwind(AssertUnwindSafe(|| {
+                            search::<true>(&shared, thread, f, depth, -i32::MAX, i32::MAX)
+                        }));
                         match result {
                             Ok(eval) => {
                                 best = Mv::from_raw(f.pv[0]);

@@ -25,7 +25,7 @@ pub fn convert_eval(f: MultiMut<Frame>, eval: i32) -> Eval {
 
 pub struct ExitSearch;
 
-pub fn search(
+pub fn search<const PV: bool>(
     shared: &Shared,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
@@ -71,13 +71,22 @@ pub fn search(
         ($mv:expr, $on_cut:expr) => {
             let mv = $mv;
             let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
-            let value = if depth == 0 {
+            let mut value;
+            if depth == 0 {
                 thread.evals += 1;
-                new.score * 20 + new.psqt_value
+                value = new.score * 20 + new.psqt_value;
             } else {
                 let f = f + 1;
                 apply(f, new, depth >= 2);
-                -search(shared, thread, f, depth, -beta, -alpha)
+                'recursion: {
+                    if !PV || best_value != -i32::MAX {
+                        value = -search::<false>(shared, thread, f, depth, -alpha - 1, -alpha);
+                        if !PV || value <= alpha {
+                            break 'recursion;
+                        }
+                    }
+                    value = -search::<true>(shared, thread, f, depth, -beta, -alpha);
+                }
             };
             if value > best_value {
                 best_value = value;
