@@ -8,6 +8,7 @@ use crate::{
     shared::Shared,
     state::{apply, make_migo, make_yugo, occ},
     thread::Thread,
+    tt::Entry,
     util::goto,
 };
 
@@ -25,7 +26,7 @@ pub fn convert_eval(f: MultiMut<Frame>, eval: i32) -> Eval {
 
 pub struct ExitSearch;
 
-pub fn search(
+pub fn search<const PV: bool>(
     shared: &Shared,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
@@ -61,9 +62,19 @@ pub fn search(
         f.pv_len = 0;
         return best_value;
     }
-    let tt_entry = &shared.tt[f.hash];
-    let tt_sig = tt_entry.sig.load(Relaxed);
-    let curr_sig = f.hash as u8;
+    let tt_entry;
+    let tt_sig;
+    let curr_sig;
+    if PV {
+        tt_entry = &shared.tt[f.hash];
+        tt_sig = tt_entry.sig.load(Relaxed);
+        curr_sig = f.hash as u8;
+    } else {
+        static ENTRY: Entry = Entry::new();
+        tt_entry = &ENTRY;
+        tt_sig = 0;
+        curr_sig = 0;
+    }
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
@@ -71,13 +82,22 @@ pub fn search(
         ($mv:expr, $on_cut:expr) => {
             let mv = $mv;
             let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
-            let value = if depth == 0 {
+            let mut value;
+            if depth == 0 {
                 thread.evals += 1;
-                new.score * 20 + new.psqt_value
+                value = new.score * 20 + new.psqt_value;
             } else {
                 let f = f + 1;
                 apply(f, new, depth >= 2);
-                -search(shared, thread, f, depth, -beta, -alpha)
+                'recursion: {
+                    if !PV || best_value != -i32::MAX {
+                        value = -search::<false>(shared, thread, f, depth, -alpha - 1, -alpha);
+                        if !PV || value <= alpha {
+                            break 'recursion;
+                        }
+                    }
+                    value = -search::<true>(shared, thread, f, depth, -beta, -alpha);
+                }
             };
             if value > best_value {
                 best_value = value;
@@ -93,7 +113,8 @@ pub fn search(
     }
     goto!(
         {
-            if tt_sig == curr_sig
+            if PV
+                && tt_sig == curr_sig
                 && let tt_mv = tt_entry.mv.load(Relaxed)
                 && playable & 1 << tt_mv != 0
             {
@@ -190,8 +211,10 @@ pub fn search(
             break 'end;
         },
         'update_tt: {
-            tt_entry.mv.store(best_mv, Relaxed);
-            tt_entry.sig.store(curr_sig, Relaxed);
+            if PV {
+                tt_entry.mv.store(best_mv, Relaxed);
+                tt_entry.sig.store(curr_sig, Relaxed);
+            }
             break 'end;
         },
         'end: {},
