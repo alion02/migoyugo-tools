@@ -10,7 +10,7 @@ use parking_lot::{ArcRwLockReadGuard, RawRwLock};
 
 use crate::{
     game::Game,
-    protocol::{EngineMsg, mv::Mv},
+    protocol::{EngineMsg, Eval, mv::Mv},
     search::{ExitSearch, convert_eval, search},
     send, send_error,
     shared::Shared,
@@ -60,6 +60,9 @@ pub fn start() -> SyncSender<Cmd> {
                                 let keps = (evals as u128 * 1_000_000 / time_ns) as u64;
                                 let pv_nodes = thread.pv_nodes;
                                 send(&EngineMsg::Info { pv, eval, depth, time, nodes, knps, evals, keps, pv_nodes });
+                                if matches!(eval, Eval::Decisive(_)) {
+                                    break;
+                                }
                             }
                             Err(e) => {
                                 if e.downcast_ref::<ExitSearch>().is_none() {

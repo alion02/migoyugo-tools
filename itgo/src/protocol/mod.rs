@@ -76,7 +76,7 @@ pub enum UserMsg {
 }
 
 /// Evaluation score.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Eval {
     /// A regular score in engine-defined abstract units.
