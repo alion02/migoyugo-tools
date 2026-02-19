@@ -78,7 +78,7 @@ pub fn start() -> SyncSender<Cmd> {
                     shared.set_active(false);
                 }
                 Cmd::Debug => {
-                    // TODO: 2d, colorful, pretty print histories
+                    // TODO: 2d, colorful, pretty print histories (heatmap style)
                     eprintln!("White histories {:?}", histories[0]);
                     eprintln!("Black histories {:?}", histories[1]);
                 }
