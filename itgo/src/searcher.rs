@@ -58,7 +58,8 @@ pub fn start() -> SyncSender<Cmd> {
                                 let evals = thread.evals;
                                 let knps = (nodes as u128 * 1_000_000 / time_ns) as u64;
                                 let keps = (evals as u128 * 1_000_000 / time_ns) as u64;
-                                send(&EngineMsg::Info { pv, eval, depth, time, nodes, knps, evals, keps });
+                                let pv_nodes = thread.pv_nodes;
+                                send(&EngineMsg::Info { pv, eval, depth, time, nodes, knps, evals, keps, pv_nodes });
                             }
                             Err(e) => {
                                 if e.downcast_ref::<ExitSearch>().is_none() {

@@ -44,6 +44,9 @@ pub fn search<const PV: bool>(
         thread.reset_countdown();
     }
     thread.nodes += 1;
+    if PV {
+        thread.pv_nodes += 1;
+    }
     let mut playable = !occ(f) & !f[-1].opp_too_long;
     let makes_yugo = f[-1].opp_makes_yugo;
     let makes_igo = f[-1].opp_makes_igo & playable;

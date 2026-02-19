@@ -36,6 +36,8 @@ pub enum EngineMsg {
         evals: u64,
         /// Kilo-evals per second.
         keps: u64,
+        /// The number of PV nodes visited.
+        pv_nodes: u64,
     },
     /// The best move found by the search.
     /// `None` if no move is available (e.g., in a terminal state).
