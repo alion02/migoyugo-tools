@@ -103,6 +103,18 @@ pub fn search<const PV: bool>(
                 best_value = value;
                 if value > alpha {
                     best_mv = mv;
+                    if PV {
+                        if depth == 0 {
+                            f.pv[0] = best_mv;
+                            f.pv_len = 1;
+                        } else {
+                            let [ref mut f, ref n] = *f.as_mut_array(0);
+                            let len = n.pv_len;
+                            f.pv[0] = best_mv;
+                            f.pv[1..][..len].copy_from_slice(&n.pv[..len]);
+                            f.pv_len = len + 1;
+                        }
+                    }
                     if value >= beta {
                         $on_cut
                     }
@@ -195,16 +207,6 @@ pub fn search<const PV: bool>(
             break 'update_tt;
         },
         'pv: {
-            if depth == 0 {
-                f.pv[0] = best_mv;
-                f.pv_len = 1;
-            } else {
-                let [ref mut f, ref n] = *f.as_mut_array(0);
-                let len = n.pv_len;
-                f.pv[0] = best_mv;
-                f.pv[1..][..len].copy_from_slice(&n.pv[..len]);
-                f.pv_len = len + 1;
-            }
             break 'update_tt;
         },
         'all: {
