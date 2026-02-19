@@ -1,4 +1,6 @@
-use std::{cmp::Ordering, panic::resume_unwind, simd::prelude::*, sync::atomic::Ordering::Relaxed};
+use std::{
+    cmp::Ordering, marker::PhantomData, panic::resume_unwind, simd::prelude::*, sync::atomic::Ordering::Relaxed,
+};
 
 use multiptr::MultiMut;
 
@@ -8,7 +10,6 @@ use crate::{
     shared::Shared,
     state::{apply, make_migo, make_yugo, occ},
     thread::Thread,
-    tt::Entry,
     util::goto,
 };
 
@@ -26,14 +27,57 @@ pub fn convert_eval(f: MultiMut<Frame>, eval: i32) -> Eval {
 
 pub struct ExitSearch;
 
-pub fn search<const PV: bool>(
+pub trait Get<T> {
+    fn get(self) -> Option<T>;
+}
+
+impl<T> Get<T> for T {
+    fn get(self) -> Option<T> {
+        Some(self)
+    }
+}
+
+pub struct Empty<T>(PhantomData<T>);
+
+pub fn empty<T>() -> Empty<T> {
+    Empty(PhantomData)
+}
+
+impl<T> Get<T> for Empty<T> {
+    fn get(self) -> Option<T> {
+        None
+    }
+}
+
+pub trait Node {
+    const PV: bool;
+    const ZW: bool = !Self::PV;
+    type IfPv<T>: Get<T>;
+}
+
+pub struct Pv;
+
+impl Node for Pv {
+    const PV: bool = true;
+    type IfPv<T> = T;
+}
+
+pub struct Zw;
+
+impl Node for Zw {
+    const PV: bool = false;
+    type IfPv<T> = Empty<T>;
+}
+
+pub fn search<N: Node>(
     shared: &Shared,
     thread: &mut Thread,
     mut f: MultiMut<Frame>,
     mut depth: u32,
-    mut alpha: i32,
+    alpha: N::IfPv<i32>,
     beta: i32,
 ) -> i32 {
+    let mut alpha = alpha.get().unwrap_or(unsafe { beta.unchecked_sub(1) });
     if thread.tick_countdown() {
         if !shared.active()
             || thread.nodes >= shared.limits.nodes
@@ -44,7 +88,7 @@ pub fn search<const PV: bool>(
         thread.reset_countdown();
     }
     thread.nodes += 1;
-    if PV {
+    if N::PV {
         thread.pv_nodes += 1;
     }
     let mut playable = !occ(f) & !f[-1].opp_too_long;
@@ -65,19 +109,9 @@ pub fn search<const PV: bool>(
         f.pv_len = 0;
         return best_value;
     }
-    let tt_entry;
-    let tt_sig;
-    let curr_sig;
-    if PV {
-        tt_entry = &shared.tt[f.hash];
-        tt_sig = tt_entry.sig.load(Relaxed);
-        curr_sig = f.hash as u8;
-    } else {
-        static ENTRY: Entry = Entry::new();
-        tt_entry = &ENTRY;
-        tt_sig = 0;
-        curr_sig = 0;
-    }
+    let tt_entry = N::PV.then(|| &shared.tt[f.hash]);
+    let tt_sig = N::PV.then(|| tt_entry.unwrap().sig.load(Relaxed));
+    let curr_sig = N::PV.then(|| f.hash as u8);
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
@@ -93,20 +127,20 @@ pub fn search<const PV: bool>(
                 let f = f + 1;
                 apply(f, new, depth >= 2);
                 'recursion: {
-                    if !PV || best_value != -i32::MAX {
-                        value = -search::<false>(shared, thread, f, depth, -alpha - 1, -alpha);
-                        if !PV || value <= alpha {
+                    if N::ZW || best_value != -i32::MAX {
+                        value = -search::<Zw>(shared, thread, f, depth, empty(), -alpha);
+                        if N::ZW || value <= alpha {
                             break 'recursion;
                         }
                     }
-                    value = -search::<true>(shared, thread, f, depth, -beta, -alpha);
+                    value = -search::<Pv>(shared, thread, f, depth, -beta, -alpha);
                 }
             };
             if value > best_value {
                 best_value = value;
                 if value > alpha {
                     best_mv = mv;
-                    if PV {
+                    if N::PV {
                         if depth == 0 {
                             f.pv[0] = best_mv;
                             f.pv_len = 1;
@@ -128,9 +162,9 @@ pub fn search<const PV: bool>(
     }
     goto!(
         {
-            if PV
+            if N::PV
                 && tt_sig == curr_sig
-                && let tt_mv = tt_entry.mv.load(Relaxed)
+                && let tt_mv = tt_entry.unwrap().mv.load(Relaxed)
                 && playable & 1 << tt_mv != 0
             {
                 try_mv!(tt_mv, break 'cut);
@@ -216,9 +250,9 @@ pub fn search<const PV: bool>(
             break 'end;
         },
         'update_tt: {
-            if PV {
-                tt_entry.mv.store(best_mv, Relaxed);
-                tt_entry.sig.store(curr_sig, Relaxed);
+            if N::PV {
+                tt_entry.unwrap().mv.store(best_mv, Relaxed);
+                tt_entry.unwrap().sig.store(curr_sig.unwrap(), Relaxed);
             }
             break 'end;
         },

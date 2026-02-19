@@ -11,7 +11,7 @@ use parking_lot::{ArcRwLockReadGuard, RawRwLock};
 use crate::{
     game::Game,
     protocol::{EngineMsg, Eval, mv::Mv},
-    search::{ExitSearch, convert_eval, search},
+    search::{ExitSearch, Pv, convert_eval, search},
     send, send_error,
     shared::Shared,
     thread::Thread,
@@ -45,7 +45,7 @@ pub fn start() -> SyncSender<Cmd> {
                     let mut best = None;
                     for depth in 1..=shared.limits.depth {
                         let result = catch_unwind(AssertUnwindSafe(|| {
-                            search::<true>(&shared, thread, f, depth, -i32::MAX, i32::MAX)
+                            search::<Pv>(&shared, thread, f, depth, -i32::MAX, i32::MAX)
                         }));
                         match result {
                             Ok(eval) => {
