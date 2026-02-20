@@ -204,19 +204,22 @@ impl Controller {
             if evt.current_player == game.my_color {
                 let ms_left = if game.my_color == "white" { evt.timers.white } else { evt.timers.black } * 1000;
 
+                const TIME_BUFFER: u64 = 2000;
+                let mut real_left = (ms_left as u64).saturating_sub(TIME_BUFFER);
                 let mut real_incr = game.matched_incr_ms;
 
                 // Subtract latency
                 if let Some(start) = game.last_move_time {
-                    let elapsed = start.elapsed().as_millis() as i64;
-                    real_incr -= elapsed;
+                    let elapsed = start.elapsed().as_millis();
+                    real_left = real_left.saturating_sub(elapsed as u64);
+                    real_incr -= elapsed as i64;
                 }
 
                 let go = GoCommand {
                     time: None,
                     nodes: None,
                     depth: None,
-                    clock: Some(Clock { left: ms_left as u64, incr: real_incr }),
+                    clock: Some(Clock { left: real_left, incr: real_incr }),
                 };
 
                 tracing::info!("Our turn! Sending go: {:?}", go);
