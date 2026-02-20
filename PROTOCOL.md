@@ -22,7 +22,9 @@ Communication happens over standard input and standard output. Each message is a
 *   `{"go": {...}}`: Start searching for the best move with optional limits.
     * `depth` (optional): Maximum search depth.
     * `nodes` (optional): Maximum nodes to search.
-    * `time` (optional): Time limit in milliseconds.
+    * `time` (optional): Hard time limit in milliseconds.
+    * `clock_left` (optional): Clock time remaining for the current player in milliseconds.
+    * `clock_incr` (optional): Clock time increment in milliseconds.
 *   `"stop"`: Stop the current search immediately.
 *   `"debug"`: Request printing debug information to stderr.
 
@@ -40,7 +42,8 @@ Communication happens over standard input and standard output. Each message is a
     * `knps`: Kilo-nodes per second.
     * `evals`: Number of evaluations.
     * `keps`: Kilo-evals per second.
-*   `{"best": "e5"}` or `{"best": null}`: The best move found after a search completes or is stopped.
+    * `pv_nodes`: PV nodes searched.
+*   `{"best": "e5"}` or `{"best": null}`: The best move found after a search completes or is stopped. Note that the engine does not play this move on its internal representation.
 *   `{"warn": "..."}`: Warning message.
 *   `{"error": "..."}`: Error message.
 
