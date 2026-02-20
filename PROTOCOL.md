@@ -23,8 +23,9 @@ Communication happens over standard input and standard output. Each message is a
     * `depth` (optional): Maximum search depth.
     * `nodes` (optional): Maximum nodes to search.
     * `time` (optional): Hard time limit in milliseconds.
-    * `clock_left` (optional): Clock time remaining for the current player in milliseconds.
-    * `clock_incr` (optional): Clock time increment in milliseconds.
+    * `clock` (optional): Clock state for the current player.
+        * `left`: Time remaining in milliseconds.
+        * `incr`: Time increment in milliseconds.
 *   `"stop"`: Stop the current search immediately.
 *   `"debug"`: Request printing debug information to stderr.
 

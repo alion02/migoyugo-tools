@@ -1,0 +1,16 @@
+[package]
+name = "myu-bridge"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.101"
+clap = { version = "4.5.60", features = ["derive"] }
+kdl = "6.5.0"
+reqwest = { version = "0.13.2", features = ["json"] }
+rust_socketio = { version = "0.6.0", features = ["async"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "time", "process"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
