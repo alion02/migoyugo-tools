@@ -48,10 +48,6 @@ pub struct ChallengeReceivedEvent {
 pub struct GameStartEvent {
     pub game_id: String,
     pub player_color: String,
-    pub opponent_name: String,
-    pub timer_settings: GameTimerSettings,
-    pub timers: GameTimers,
-    pub timestamp: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

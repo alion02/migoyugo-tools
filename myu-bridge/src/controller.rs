@@ -162,7 +162,7 @@ impl Controller {
     }
 
     async fn handle_game_start(&mut self, evt: GameStartEvent) -> Result<()> {
-        tracing::info!("Game {} starting against {}", evt.game_id, evt.opponent_name);
+        tracing::info!("Game {} starting, as {}", evt.game_id, evt.player_color);
 
         if let Some(game) = self.active_game.as_mut() {
             game.game_id = evt.game_id.clone();

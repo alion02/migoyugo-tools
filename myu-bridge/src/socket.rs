@@ -26,6 +26,12 @@ impl MigoyugoSocketClient {
 
         let mut builder = ClientBuilder::new(base_url).auth(auth_payload);
 
+        builder = builder.on_any(move |event, payload, _| {
+            Box::pin(async move {
+                tracing::info!("RAW SOCKET EVENT: {:?} | PAYLOAD: {:?}", event, payload);
+            })
+        });
+
         let tx_clone = event_tx.clone();
         builder = builder.on("connect", move |_payload, _| {
             let tx = tx_clone.clone();
@@ -46,10 +52,13 @@ impl MigoyugoSocketClient {
         builder = builder.on("challengeReceived", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload
-                    && let Ok(event) = serde_json::from_str::<ChallengeReceivedEvent>(&s[0].to_string())
-                {
-                    let _ = tx.send(BridgeEvent::ChallengeReceived(event)).await;
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<ChallengeReceivedEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::ChallengeReceived(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize challengeReceived: {} (payload: {:?})", e, s),
+                    }
                 }
             })
         });
@@ -58,10 +67,15 @@ impl MigoyugoSocketClient {
         builder = builder.on("gameStart", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload
-                    && let Ok(event) = serde_json::from_str::<GameStartEvent>(&s[0].to_string())
-                {
-                    let _ = tx.send(BridgeEvent::GameStart(event)).await;
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<GameStartEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::GameStart(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize gameStart: {} (payload: {:?})", e, s),
+                    }
+                } else {
+                    tracing::warn!("gameStart payload was NOT text: {:?}", payload);
                 }
             })
         });
@@ -70,10 +84,13 @@ impl MigoyugoSocketClient {
         builder = builder.on("moveUpdate", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload
-                    && let Ok(event) = serde_json::from_str::<MoveUpdateEvent>(&s[0].to_string())
-                {
-                    let _ = tx.send(BridgeEvent::MoveUpdate(event)).await;
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<MoveUpdateEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::MoveUpdate(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize moveUpdate: {} (payload: {:?})", e, s),
+                    }
                 }
             })
         });
@@ -82,10 +99,13 @@ impl MigoyugoSocketClient {
         builder = builder.on("gameEnd", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload
-                    && let Ok(event) = serde_json::from_str::<GameEndEvent>(&s[0].to_string())
-                {
-                    let _ = tx.send(BridgeEvent::GameEnd(event)).await;
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<GameEndEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::GameEnd(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize gameEnd: {} (payload: {:?})", e, s),
+                    }
                 }
             })
         });
