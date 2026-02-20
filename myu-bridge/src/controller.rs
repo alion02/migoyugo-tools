@@ -90,7 +90,9 @@ impl Controller {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        let mut ping_interval = tokio::time::interval(Duration::from_secs(3));
+        const PING_INTERVAL: Duration = Duration::from_secs(3);
+        // Delay first ping to try and wait for upgrade to WebSockets
+        let mut ping_interval = tokio::time::interval_at(Instant::now() + PING_INTERVAL, PING_INTERVAL);
         loop {
             tokio::select! {
                 _ = ping_interval.tick() => {
