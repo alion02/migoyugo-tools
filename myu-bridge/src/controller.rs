@@ -19,6 +19,7 @@ pub struct GameState {
     pub engine_rx: mpsc::Receiver<EngineEvent>,
     pub pending_challenge_id: Option<u64>,
     pub config_rule: AcceptRule,
+    pub matched_incr_ms: i64,
     pub last_move_time: Option<Instant>,
 }
 
@@ -107,11 +108,15 @@ impl Controller {
 
         let mins = evt.timer_settings.minutes_per_player as u64;
         let inc = evt.timer_settings.increment_seconds as i64;
-        let ms_time = mins * 60 * 1000;
-        let ms_inc = inc * 1000;
+
+        let msg_time_sec = mins * 60;
+        let msg_incr_sec = inc;
 
         // Find matching rule
-        let matched_rule = self.config_rules.iter().find(|rule| rule.time == ms_time && rule.incr == ms_inc);
+        let matched_rule = self
+            .config_rules
+            .iter()
+            .find(|rule| rule.times.contains(&msg_time_sec) && rule.incrs.contains(&msg_incr_sec));
 
         if let Some(rule) = matched_rule {
             tracing::info!("Accepting challenge {} (matches rule)", evt.challenge_id);
@@ -140,6 +145,7 @@ impl Controller {
                         engine_rx,
                         pending_challenge_id: Some(evt.challenge_id),
                         config_rule: rule.clone(),
+                        matched_incr_ms: msg_incr_sec * 1000,
                         last_move_time: None,
                     });
                 }
@@ -198,7 +204,7 @@ impl Controller {
             if evt.current_player == game.my_color {
                 let ms_left = if game.my_color == "white" { evt.timers.white } else { evt.timers.black } * 1000;
 
-                let mut real_incr = game.config_rule.incr;
+                let mut real_incr = game.matched_incr_ms;
 
                 // Subtract latency
                 if let Some(start) = game.last_move_time {

@@ -8,8 +8,8 @@ pub struct BridgeConfig {
 
 #[derive(Debug, Clone)]
 pub struct AcceptRule {
-    pub time: u64,
-    pub incr: i64,
+    pub times: Vec<u64>,
+    pub incrs: Vec<i64>,
     pub engine_cmd: String,
     pub engine_args: Vec<String>,
     pub engine_set: Option<serde_json::Value>,
@@ -23,16 +23,8 @@ pub fn parse_config(path: &std::path::Path) -> Result<BridgeConfig> {
 
     for node in doc.nodes() {
         if node.name().value() == "accept" {
-            let time = node
-                .get("time")
-                .and_then(|e| e.as_integer())
-                .context("Missing or invalid 'time' property in 'accept' node")? as u64;
-
-            let incr = node
-                .get("incr")
-                .and_then(|e| e.as_integer())
-                .context("Missing or invalid 'incr' property in 'accept' node")? as i64;
-
+            let mut times = Vec::new();
+            let mut incrs = Vec::new();
             let mut engine_cmd = None;
             let mut engine_args = Vec::new();
             let mut engine_set = None;
@@ -40,6 +32,20 @@ pub fn parse_config(path: &std::path::Path) -> Result<BridgeConfig> {
             if let Some(children) = node.children() {
                 for child in children.nodes() {
                     match child.name().value() {
+                        "time" => {
+                            for entry in child.entries() {
+                                if let Some(val) = entry.value().as_integer() {
+                                    times.push(val as u64);
+                                }
+                            }
+                        }
+                        "incr" => {
+                            for entry in child.entries() {
+                                if let Some(val) = entry.value().as_integer() {
+                                    incrs.push(val as i64);
+                                }
+                            }
+                        }
                         "engine" => {
                             for (i, entry) in child.entries().iter().enumerate() {
                                 if let Some(val) = entry.value().as_string() {
@@ -63,9 +69,13 @@ pub fn parse_config(path: &std::path::Path) -> Result<BridgeConfig> {
                 }
             }
 
+            if times.is_empty() || incrs.is_empty() {
+                anyhow::bail!("Missing or empty 'time' / 'incr' properties in 'accept' node");
+            }
+
             let engine_cmd = engine_cmd.context("Missing 'engine' block in 'accept' node")?;
 
-            accept_rules.push(AcceptRule { time, incr, engine_cmd, engine_args, engine_set });
+            accept_rules.push(AcceptRule { times, incrs, engine_cmd, engine_args, engine_set });
         }
     }
 
