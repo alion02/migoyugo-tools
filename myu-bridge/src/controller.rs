@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::mpsc;
-use tokio::time::Instant;
+use tokio::time::{Duration, Instant};
 
 use crate::config::AcceptRule;
 use crate::engine::{Clock, EngineEvent, EngineWrapper, GoCommand};
@@ -27,21 +27,17 @@ pub struct GameState {
     pub config_rule: AcceptRule,
     pub matched_incr_ms: i64,
     pub matched_time_ms: u64,
-    pub last_move_time: Option<Instant>,
+    pub moves_played: u32,
 }
 
 impl GameState {
-    pub async fn trigger_go(&mut self, ms_left: u64) -> Result<()> {
+    pub async fn trigger_go(&mut self, ms_left: u64, average_latency_ms: u64) -> Result<()> {
         const TIME_BUFFER: u64 = 2000;
-        let mut real_left = ms_left.saturating_sub(TIME_BUFFER);
+        let mut real_left = ms_left;
         let mut real_incr = self.matched_incr_ms;
 
-        // Subtract latency
-        if let Some(start) = self.last_move_time {
-            let elapsed = start.elapsed().as_millis();
-            real_left = real_left.saturating_sub(elapsed as u64);
-            real_incr -= elapsed as i64;
-        }
+        real_left = real_left.saturating_sub(TIME_BUFFER + average_latency_ms);
+        real_incr -= average_latency_ms as i64;
 
         let go =
             GoCommand { time: None, nodes: None, depth: None, clock: Some(Clock { left: real_left, incr: real_incr }) };
@@ -60,6 +56,9 @@ pub struct Controller {
     // Simplification for this bridge: handle one active game at a time.
     pub active_game: Option<GameState>,
     pub last_game_info: Option<LastGameInfo>,
+
+    pub latency_samples: std::collections::VecDeque<u64>,
+    pub last_ping_sent: Option<Instant>,
 }
 
 impl Controller {
@@ -69,12 +68,39 @@ impl Controller {
         config_rules: Vec<AcceptRule>,
         socket_rx: mpsc::Receiver<BridgeEvent>,
     ) -> Self {
-        Self { http_client, socket_client, config_rules, socket_rx, active_game: None, last_game_info: None }
+        Self {
+            http_client,
+            socket_client,
+            config_rules,
+            socket_rx,
+            active_game: None,
+            last_game_info: None,
+            latency_samples: std::collections::VecDeque::new(),
+            last_ping_sent: None,
+        }
+    }
+
+    pub fn average_latency(&self) -> u64 {
+        if self.latency_samples.is_empty() {
+            // Conservative default
+            return 500;
+        }
+        let sum: u64 = self.latency_samples.iter().sum();
+        sum / (self.latency_samples.len() as u64)
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(3));
         loop {
             tokio::select! {
+                _ = ping_interval.tick() => {
+                    if let Err(e) = self.socket_client.emit_ping().await {
+                        tracing::error!("Failed to ping: {}", e);
+                    } else {
+                        self.last_ping_sent = Some(Instant::now());
+                    }
+                }
+
                 Some(event) = self.socket_rx.recv() => {
                     if let Err(e) = self.handle_socket_event(event).await {
                         tracing::error!("Error handling socket event: {:?}", e);
@@ -133,6 +159,16 @@ impl Controller {
             BridgeEvent::RematchAccepted(evt) => {
                 self.handle_rematch_accepted(evt).await?;
             }
+            BridgeEvent::Pong => {
+                if let Some(start) = self.last_ping_sent.take() {
+                    let latency = start.elapsed().as_millis() as u64;
+                    if self.latency_samples.len() >= 10 {
+                        self.latency_samples.pop_front();
+                    }
+                    self.latency_samples.push_back(latency);
+                    tracing::debug!("Measured latency: {} ms (avg: {} ms)", latency, self.average_latency());
+                }
+            }
         }
         Ok(())
     }
@@ -187,7 +223,7 @@ impl Controller {
                         config_rule: rule.clone(),
                         matched_incr_ms: msg_incr_sec * 1000,
                         matched_time_ms: msg_time_sec * 1000,
-                        last_move_time: None,
+                        moves_played: 0,
                     });
                 }
                 Err(e) => {
@@ -267,7 +303,7 @@ impl Controller {
                 config_rule: info.rule,
                 matched_incr_ms: info.matched_incr_ms,
                 matched_time_ms: info.matched_time_ms,
-                last_move_time: None,
+                moves_played: 0,
             });
 
             // Ensure engine is ready before we process any moves
@@ -281,6 +317,7 @@ impl Controller {
     }
 
     async fn handle_move_update(&mut self, evt: MoveUpdateEvent) -> Result<()> {
+        let avg_latency = self.average_latency();
         if let Some(game) = self.active_game.as_mut() {
             if evt.game_over {
                 tracing::info!("Move update indicates game over.");
@@ -304,7 +341,7 @@ impl Controller {
             if evt.current_player == game.my_color {
                 let ms_left =
                     (if game.my_color == "white" { evt.timers.white } else { evt.timers.black } * 1000) as u64;
-                game.trigger_go(ms_left).await?;
+                game.trigger_go(ms_left, avg_latency).await?;
             }
         }
 
@@ -312,6 +349,7 @@ impl Controller {
     }
 
     async fn handle_engine_event(&mut self, event: EngineEvent) -> Result<()> {
+        let avg_latency = self.average_latency();
         match event {
             EngineEvent::Best(Some(mv)) => {
                 if let Some(game) = self.active_game.as_mut() {
@@ -322,7 +360,7 @@ impl Controller {
                         let row = 8 - (r as u8 - b'0');
 
                         tracing::info!("Engine chose best move {}, sending to site", mv);
-                        game.last_move_time = Some(Instant::now());
+                        game.moves_played += 1;
                         self.socket_client.make_move(&game.game_id, row, col).await?;
                     }
                 }
@@ -334,9 +372,9 @@ impl Controller {
                 tracing::info!("Engine is ready");
                 if let Some(game) = self.active_game.as_mut() {
                     // If we are white and haven't played a move yet, send the initial go
-                    if game.my_color == "white" && game.last_move_time.is_none() {
+                    if game.my_color == "white" && game.moves_played == 0 {
                         let ms_left = game.matched_time_ms;
-                        game.trigger_go(ms_left).await?
+                        game.trigger_go(ms_left, avg_latency).await?
                     }
                 }
             }

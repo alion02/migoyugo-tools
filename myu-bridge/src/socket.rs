@@ -17,6 +17,7 @@ pub enum BridgeEvent {
     RematchAccepted(GameStartEvent),
     Connected,
     Disconnected,
+    Pong,
 }
 
 pub struct MigoyugoSocketClient {
@@ -50,6 +51,19 @@ impl MigoyugoSocketClient {
             let tx = tx_clone.clone();
             Box::pin(async move {
                 let _ = tx.send(BridgeEvent::Disconnected).await;
+            })
+        });
+
+        let tx_clone = event_tx.clone();
+        builder = builder.on("message", move |payload, _| {
+            let tx = tx_clone.clone();
+            Box::pin(async move {
+                if let rust_socketio::Payload::Text(s) = payload
+                    && let Some(msg) = s.first()
+                    && msg.as_str() == Some("pong")
+                {
+                    let _ = tx.send(BridgeEvent::Pong).await;
+                }
             })
         });
 
@@ -162,6 +176,11 @@ impl MigoyugoSocketClient {
         let payload = RespondToRematchPayload { game_id: game_id.to_string(), accept };
         let json_val = serde_json::to_value(payload).context("Failed to serialize respond to rematch payload")?;
         self.client.emit("respondToRematch", json_val).await.context("Failed to emit respondToRematch")?;
+        Ok(())
+    }
+
+    pub async fn emit_ping(&self) -> Result<()> {
+        self.client.emit("ping", serde_json::json!({})).await.context("Failed to emit ping")?;
         Ok(())
     }
 
