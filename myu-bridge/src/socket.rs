@@ -46,10 +46,10 @@ impl MigoyugoSocketClient {
         builder = builder.on("challengeReceived", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload {
-                    if let Ok(event) = serde_json::from_str::<ChallengeReceivedEvent>(&s[0].to_string()) {
-                        let _ = tx.send(BridgeEvent::ChallengeReceived(event)).await;
-                    }
+                if let rust_socketio::Payload::Text(s) = payload
+                    && let Ok(event) = serde_json::from_str::<ChallengeReceivedEvent>(&s[0].to_string())
+                {
+                    let _ = tx.send(BridgeEvent::ChallengeReceived(event)).await;
                 }
             })
         });
@@ -58,10 +58,10 @@ impl MigoyugoSocketClient {
         builder = builder.on("gameStart", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload {
-                    if let Ok(event) = serde_json::from_str::<GameStartEvent>(&s[0].to_string()) {
-                        let _ = tx.send(BridgeEvent::GameStart(event)).await;
-                    }
+                if let rust_socketio::Payload::Text(s) = payload
+                    && let Ok(event) = serde_json::from_str::<GameStartEvent>(&s[0].to_string())
+                {
+                    let _ = tx.send(BridgeEvent::GameStart(event)).await;
                 }
             })
         });
@@ -70,10 +70,10 @@ impl MigoyugoSocketClient {
         builder = builder.on("moveUpdate", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload {
-                    if let Ok(event) = serde_json::from_str::<MoveUpdateEvent>(&s[0].to_string()) {
-                        let _ = tx.send(BridgeEvent::MoveUpdate(event)).await;
-                    }
+                if let rust_socketio::Payload::Text(s) = payload
+                    && let Ok(event) = serde_json::from_str::<MoveUpdateEvent>(&s[0].to_string())
+                {
+                    let _ = tx.send(BridgeEvent::MoveUpdate(event)).await;
                 }
             })
         });
@@ -82,10 +82,10 @@ impl MigoyugoSocketClient {
         builder = builder.on("gameEnd", move |payload, _| {
             let tx = tx_clone.clone();
             Box::pin(async move {
-                if let rust_socketio::Payload::Text(s) = payload {
-                    if let Ok(event) = serde_json::from_str::<GameEndEvent>(&s[0].to_string()) {
-                        let _ = tx.send(BridgeEvent::GameEnd(event)).await;
-                    }
+                if let rust_socketio::Payload::Text(s) = payload
+                    && let Ok(event) = serde_json::from_str::<GameEndEvent>(&s[0].to_string())
+                {
+                    let _ = tx.send(BridgeEvent::GameEnd(event)).await;
                 }
             })
         });

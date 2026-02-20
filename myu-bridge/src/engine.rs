@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::mpsc;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,9 +16,13 @@ pub struct GoCommand {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub clock_left: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clock_incr: Option<i64>,
+    pub clock: Option<Clock>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Clock {
+    pub left: u64,
+    pub incr: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,10 +75,10 @@ impl EngineWrapper {
                             let msg = obj.get("error").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let _ = event_tx.send(EngineEvent::Error(msg)).await;
                         }
-                    } else if let Some(s) = value.as_str() {
-                        if s == "ready" {
-                            let _ = event_tx.send(EngineEvent::Ready).await;
-                        }
+                    } else if let Some(s) = value.as_str()
+                        && s == "ready"
+                    {
+                        let _ = event_tx.send(EngineEvent::Ready).await;
                     }
                 }
             }

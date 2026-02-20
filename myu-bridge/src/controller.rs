@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::config::AcceptRule;
-use crate::engine::{EngineEvent, EngineWrapper, GoCommand};
+use crate::engine::{Clock, EngineEvent, EngineWrapper, GoCommand};
 use crate::http::MigoyugoHttpClient;
 use crate::models::{ChallengeReceivedEvent, GameStartEvent, MoveUpdateEvent};
 use crate::socket::{BridgeEvent, MigoyugoSocketClient};
@@ -86,10 +86,10 @@ impl Controller {
             }
             BridgeEvent::GameEnd(evt) => {
                 tracing::info!("Game {} ended by {} ({})", evt.game_id, evt.winner.unwrap_or_default(), evt.reason);
-                if let Some(game) = &self.active_game {
-                    if game.game_id == evt.game_id {
-                        self.active_game = None;
-                    }
+                if let Some(game) = &self.active_game
+                    && game.game_id == evt.game_id
+                {
+                    self.active_game = None;
                 }
             }
         }
@@ -210,8 +210,7 @@ impl Controller {
                     time: None,
                     nodes: None,
                     depth: None,
-                    clock_left: Some(ms_left as u64),
-                    clock_incr: Some(real_incr),
+                    clock: Some(Clock { left: ms_left as u64, incr: real_incr }),
                 };
 
                 tracing::info!("Our turn! Sending go: {:?}", go);

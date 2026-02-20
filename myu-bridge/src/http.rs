@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
 
-use crate::models::{AcceptChallengeResponse, DeclineChallengeResponse, LoginRequest, LoginResponse};
+use crate::models::{AcceptChallengeResponse, LoginRequest, LoginResponse};
 
 pub struct MigoyugoHttpClient {
     client: Client,
