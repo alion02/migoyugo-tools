@@ -20,7 +20,29 @@ pub struct GameState {
     pub pending_challenge_id: Option<u64>,
     pub config_rule: AcceptRule,
     pub matched_incr_ms: i64,
+    pub matched_time_ms: u64,
     pub last_move_time: Option<Instant>,
+}
+
+impl GameState {
+    pub async fn trigger_go(&mut self, ms_left: u64) -> Result<()> {
+        const TIME_BUFFER: u64 = 2000;
+        let mut real_left = ms_left.saturating_sub(TIME_BUFFER);
+        let mut real_incr = self.matched_incr_ms;
+
+        // Subtract latency
+        if let Some(start) = self.last_move_time {
+            let elapsed = start.elapsed().as_millis();
+            real_left = real_left.saturating_sub(elapsed as u64);
+            real_incr -= elapsed as i64;
+        }
+
+        let go =
+            GoCommand { time: None, nodes: None, depth: None, clock: Some(Clock { left: real_left, incr: real_incr }) };
+
+        tracing::info!("Our turn! Sending go: {:?}", go);
+        self.engine.send_go(&go).await
+    }
 }
 
 pub struct Controller {
@@ -146,6 +168,7 @@ impl Controller {
                         pending_challenge_id: Some(evt.challenge_id),
                         config_rule: rule.clone(),
                         matched_incr_ms: msg_incr_sec * 1000,
+                        matched_time_ms: msg_time_sec * 1000,
                         last_move_time: None,
                     });
                 }
@@ -202,28 +225,9 @@ impl Controller {
 
             // Check if it's our turn now
             if evt.current_player == game.my_color {
-                let ms_left = if game.my_color == "white" { evt.timers.white } else { evt.timers.black } * 1000;
-
-                const TIME_BUFFER: u64 = 2000;
-                let mut real_left = (ms_left as u64).saturating_sub(TIME_BUFFER);
-                let mut real_incr = game.matched_incr_ms;
-
-                // Subtract latency
-                if let Some(start) = game.last_move_time {
-                    let elapsed = start.elapsed().as_millis();
-                    real_left = real_left.saturating_sub(elapsed as u64);
-                    real_incr -= elapsed as i64;
-                }
-
-                let go = GoCommand {
-                    time: None,
-                    nodes: None,
-                    depth: None,
-                    clock: Some(Clock { left: real_left, incr: real_incr }),
-                };
-
-                tracing::info!("Our turn! Sending go: {:?}", go);
-                game.engine.send_go(&go).await?;
+                let ms_left =
+                    (if game.my_color == "white" { evt.timers.white } else { evt.timers.black } * 1000) as u64;
+                game.trigger_go(ms_left).await?;
             }
         }
 
@@ -251,12 +255,13 @@ impl Controller {
             }
             EngineEvent::Ready => {
                 tracing::info!("Engine is ready");
-                // if it's our turn at start, we might need to send go.
-                // But the site usually sends a moveUpdate or we parse the gameStart board.
-                // For this implementation, we rely on MoveUpdate triggering the first go if opponent moves,
-                // or we need to handle if we are white and the game starts.
-
-                // Let's improve game_start later to trigger Go if we are white and board is empty.
+                if let Some(game) = self.active_game.as_mut() {
+                    // If we are white and haven't played a move yet, send the initial go
+                    if game.my_color == "white" && game.last_move_time.is_none() {
+                        let ms_left = game.matched_time_ms;
+                        game.trigger_go(ms_left).await?
+                    }
+                }
             }
             EngineEvent::Info(info) => {
                 tracing::debug!("Engine info: {}", info);
