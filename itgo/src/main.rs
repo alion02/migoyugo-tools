@@ -39,7 +39,7 @@ fn main() {
         name: "Itgo",
         author: "alion02",
         version: env!("VERGEN_GIT_DESCRIBE"),
-        features: &["interactive", "fixed_time", "fixed_nodes", "fixed_depth", "dyn_mem"],
+        features: &["interactive", "fixed_time", "fixed_nodes", "fixed_depth", "clock_tm", "clock_neg_incr", "dyn_mem"],
     });
     let (line_tx, line_rx) = channel();
     spawn(move || {

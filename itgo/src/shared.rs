@@ -1,4 +1,5 @@
 use std::{
+    f64::consts::E,
     sync::atomic::{self, AtomicBool},
     time::Instant,
 };
@@ -34,7 +35,19 @@ impl Shared {
         }
     }
 
-    pub fn go(&mut self, started_at: Instant, limits: Limits) {
+    pub fn go(&mut self, started_at: Instant, mut limits: Limits) {
+        if let Some(clock) = &limits.clock {
+            const K: f64 = 0.05;
+            const EXPECTED_LEN: i32 = 120;
+            const EXPECTED_DELAY: f64 = 10.;
+            const MIN_TIME: f64 = 10.;
+            let expected_plies_left = (1. + E.powf((EXPECTED_LEN - self.game.frame_ptr().ply) as f64 * K)).ln() / K;
+            let target_time_fraction = 1. / expected_plies_left;
+            let expected_time_available =
+                clock.left as f64 - EXPECTED_DELAY + clock.incr as f64 * expected_plies_left.floor();
+            let computed_limit = (expected_time_available * target_time_fraction).max(MIN_TIME) as u64;
+            limits.time = limits.time.min(computed_limit);
+        }
         self.started_at = started_at;
         *self.active.get_mut() = true;
         self.limits = limits;
