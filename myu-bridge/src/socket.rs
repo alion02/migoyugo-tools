@@ -28,7 +28,7 @@ impl MigoyugoSocketClient {
 
         builder = builder.on_any(move |event, payload, _| {
             Box::pin(async move {
-                tracing::info!("RAW SOCKET EVENT: {:?} | PAYLOAD: {:?}", event, payload);
+                tracing::debug!("RAW SOCKET EVENT: {:?} | PAYLOAD: {:?}", event, payload);
             })
         });
 
