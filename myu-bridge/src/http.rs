@@ -26,11 +26,22 @@ impl MigoyugoHttpClient {
         let url = format!("{}/api/auth/login", self.base_url);
         let req_body = LoginRequest { email, password };
 
+        tracing::debug!("Sending POST request to {}", url);
         let res = self.client.post(&url).json(&req_body).send().await.context("Failed to send login request")?;
 
         if !res.status().is_success() {
             let status = res.status();
+            let headers = res.headers().clone();
             let text = res.text().await.unwrap_or_default();
+
+            tracing::error!(
+                "Login request failed.\nURL: {}\nStatus: {}\nHeaders: {:#?}\nResponse Body: {}",
+                url,
+                status,
+                headers,
+                text
+            );
+
             anyhow::bail!("Login failed with status {}: {}", status, text);
         }
 

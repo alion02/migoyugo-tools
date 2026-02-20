@@ -17,7 +17,7 @@ struct Args {
     config: String,
 
     /// Base URL for Migoyugo (useful for local testing)
-    #[arg(long, default_value = "https://migoyugo.com")]
+    #[arg(long, default_value = "https://migoyugo-back-end.onrender.com")]
     url: String,
 }
 
