@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use rust_socketio::asynchronous::{Client, ClientBuilder};
 use tokio::sync::mpsc;
 
-use crate::models::{ChallengeReceivedEvent, GameEndEvent, GameStartEvent, MakeMovePayload, MoveUpdateEvent};
+use crate::models::{
+    ChallengeReceivedEvent, GameEndEvent, GameStartEvent, MakeMovePayload, MoveUpdateEvent, RematchRequestedEvent,
+    RespondToRematchPayload,
+};
 
 #[derive(Debug)]
 pub enum BridgeEvent {
@@ -10,6 +13,8 @@ pub enum BridgeEvent {
     GameStart(GameStartEvent),
     MoveUpdate(MoveUpdateEvent),
     GameEnd(GameEndEvent),
+    RematchRequested(RematchRequestedEvent),
+    RematchAccepted(GameStartEvent),
     Connected,
     Disconnected,
 }
@@ -110,6 +115,36 @@ impl MigoyugoSocketClient {
             })
         });
 
+        let tx_clone = event_tx.clone();
+        builder = builder.on("rematchRequested", move |payload, _| {
+            let tx = tx_clone.clone();
+            Box::pin(async move {
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<RematchRequestedEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::RematchRequested(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize rematchRequested: {} (payload: {:?})", e, s),
+                    }
+                }
+            })
+        });
+
+        let tx_clone = event_tx.clone();
+        builder = builder.on("rematchAccepted", move |payload, _| {
+            let tx = tx_clone.clone();
+            Box::pin(async move {
+                if let rust_socketio::Payload::Text(s) = payload {
+                    match serde_json::from_str::<GameStartEvent>(&s[0].to_string()) {
+                        Ok(event) => {
+                            let _ = tx.send(BridgeEvent::RematchAccepted(event)).await;
+                        }
+                        Err(e) => tracing::warn!("Failed to deserialize rematchAccepted: {} (payload: {:?})", e, s),
+                    }
+                }
+            })
+        });
+
         let client = builder.connect().await.context("Failed to connect Socket.IO client")?;
 
         Ok(Self { client })
@@ -120,6 +155,13 @@ impl MigoyugoSocketClient {
 
         let json_val = serde_json::to_value(payload).context("Failed to serialize move payload")?;
         self.client.emit("makeMove", json_val).await.context("Failed to emit makeMove")?;
+        Ok(())
+    }
+
+    pub async fn respond_to_rematch(&self, game_id: &str, accept: bool) -> Result<()> {
+        let payload = RespondToRematchPayload { game_id: game_id.to_string(), accept };
+        let json_val = serde_json::to_value(payload).context("Failed to serialize respond to rematch payload")?;
+        self.client.emit("respondToRematch", json_val).await.context("Failed to emit respondToRematch")?;
         Ok(())
     }
 

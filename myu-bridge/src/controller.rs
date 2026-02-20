@@ -8,8 +8,14 @@ use tokio::time::Instant;
 use crate::config::AcceptRule;
 use crate::engine::{Clock, EngineEvent, EngineWrapper, GoCommand};
 use crate::http::MigoyugoHttpClient;
-use crate::models::{ChallengeReceivedEvent, GameStartEvent, MoveUpdateEvent};
+use crate::models::{ChallengeReceivedEvent, GameStartEvent, MoveUpdateEvent, RematchRequestedEvent};
 use crate::socket::{BridgeEvent, MigoyugoSocketClient};
+
+pub struct LastGameInfo {
+    pub rule: AcceptRule,
+    pub matched_time_ms: u64,
+    pub matched_incr_ms: i64,
+}
 
 pub struct GameState {
     pub game_id: String,
@@ -53,6 +59,7 @@ pub struct Controller {
 
     // Simplification for this bridge: handle one active game at a time.
     pub active_game: Option<GameState>,
+    pub last_game_info: Option<LastGameInfo>,
 }
 
 impl Controller {
@@ -62,7 +69,7 @@ impl Controller {
         config_rules: Vec<AcceptRule>,
         socket_rx: mpsc::Receiver<BridgeEvent>,
     ) -> Self {
-        Self { http_client, socket_client, config_rules, socket_rx, active_game: None }
+        Self { http_client, socket_client, config_rules, socket_rx, active_game: None, last_game_info: None }
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -112,8 +119,19 @@ impl Controller {
                 if let Some(game) = &self.active_game
                     && game.game_id == evt.game_id
                 {
+                    self.last_game_info = Some(LastGameInfo {
+                        rule: game.config_rule.clone(),
+                        matched_incr_ms: game.matched_incr_ms,
+                        matched_time_ms: game.matched_time_ms,
+                    });
                     self.active_game = None;
                 }
+            }
+            BridgeEvent::RematchRequested(evt) => {
+                self.handle_rematch_requested(evt).await?;
+            }
+            BridgeEvent::RematchAccepted(evt) => {
+                self.handle_rematch_accepted(evt).await?;
             }
         }
         Ok(())
@@ -200,6 +218,65 @@ impl Controller {
         } else {
             tracing::warn!("Received gameStart but we have no pending challenge state");
         }
+        Ok(())
+    }
+
+    async fn handle_rematch_requested(&mut self, evt: RematchRequestedEvent) -> Result<()> {
+        tracing::info!("Rematch requested for game {} by {}", evt.game_id, evt.requester_name);
+
+        // We always accept if we have last game info and aren't in another game
+        if self.last_game_info.is_some() && self.active_game.is_none() {
+            tracing::info!("Accepting rematch request for game {}", evt.game_id);
+            self.socket_client.respond_to_rematch(&evt.game_id, true).await?;
+        } else {
+            tracing::info!(
+                "Declining rematch request for game {} (no previous game info or already in game)",
+                evt.game_id
+            );
+            self.socket_client.respond_to_rematch(&evt.game_id, false).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_rematch_accepted(&mut self, evt: GameStartEvent) -> Result<()> {
+        tracing::info!("Rematch accepted! New game {} starting, as {}", evt.game_id, evt.player_color);
+
+        if self.active_game.is_some() {
+            tracing::warn!("Already in a game, ignoring rematch accepted");
+            return Ok(());
+        }
+
+        if let Some(info) = self.last_game_info.take() {
+            let (engine_tx, engine_rx) = mpsc::channel(100);
+
+            // Spawn the engine
+            let mut engine =
+                EngineWrapper::spawn(&info.rule.engine_cmd, &info.rule.engine_args, engine_tx.clone()).await?;
+            if let Some(set) = &info.rule.engine_set {
+                engine.send_set(set).await?;
+            }
+
+            self.active_game = Some(GameState {
+                game_id: evt.game_id.clone(),
+                engine,
+                my_color: evt.player_color.clone(),
+                engine_tx,
+                engine_rx,
+                pending_challenge_id: None,
+                config_rule: info.rule,
+                matched_incr_ms: info.matched_incr_ms,
+                matched_time_ms: info.matched_time_ms,
+                last_move_time: None,
+            });
+
+            // Ensure engine is ready before we process any moves
+            self.active_game.as_mut().unwrap().engine.send_sync().await?;
+            tracing::info!("Sent sync to engine, waiting for ready..");
+        } else {
+            tracing::warn!("Received rematchAccepted but have no last_game_info");
+        }
+
         Ok(())
     }
 

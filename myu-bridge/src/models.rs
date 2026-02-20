@@ -94,3 +94,18 @@ pub struct MakeMovePayload {
     pub row: u8,
     pub col: u8,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RematchRequestedEvent {
+    pub game_id: String,
+    pub requester: String,
+    pub requester_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RespondToRematchPayload {
+    pub game_id: String,
+    pub accept: bool,
+}
