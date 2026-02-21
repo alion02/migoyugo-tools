@@ -50,6 +50,7 @@ impl GameState {
 pub struct Controller {
     pub http_client: Arc<MigoyugoHttpClient>,
     pub socket_client: Arc<MigoyugoSocketClient>,
+    pub config_path: std::path::PathBuf,
     pub config_rules: Vec<AcceptRule>,
     pub socket_rx: mpsc::Receiver<BridgeEvent>,
 
@@ -59,24 +60,28 @@ pub struct Controller {
 
     pub latency_samples: std::collections::VecDeque<u64>,
     pub last_ping_sent: Option<Instant>,
+    pub shutting_down: bool,
 }
 
 impl Controller {
     pub fn new(
         http_client: Arc<MigoyugoHttpClient>,
         socket_client: Arc<MigoyugoSocketClient>,
+        config_path: std::path::PathBuf,
         config_rules: Vec<AcceptRule>,
         socket_rx: mpsc::Receiver<BridgeEvent>,
     ) -> Self {
         Self {
             http_client,
             socket_client,
+            config_path,
             config_rules,
             socket_rx,
             active_game: None,
             last_game_info: None,
             latency_samples: std::collections::VecDeque::new(),
             last_ping_sent: None,
+            shutting_down: false,
         }
     }
 
@@ -93,8 +98,50 @@ impl Controller {
         const PING_INTERVAL: Duration = Duration::from_secs(3);
         // Delay first ping to try and wait for upgrade to WebSockets
         let mut ping_interval = tokio::time::interval_at(Instant::now() + PING_INTERVAL, PING_INTERVAL);
+
+        let mut config_interval = tokio::time::interval(Duration::from_secs(1));
+        let mut last_config_mod = std::fs::metadata(&self.config_path)
+            .and_then(|m| m.modified())
+            .unwrap_or_else(|_| std::time::SystemTime::now());
+
+        let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
+
         loop {
+            if self.shutting_down && self.active_game.is_none() {
+                tracing::info!("No active game and shutting down gracefully. Exiting loop.");
+                break;
+            }
+
             tokio::select! {
+                res = &mut ctrl_c, if !self.shutting_down => {
+                    match res {
+                        Ok(()) => {
+                            tracing::info!("Ctrl-C received! Refusing new games and shutting down when current game finishes.");
+                            self.shutting_down = true;
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to listen for ctrl-c: {}", e);
+                        }
+                    }
+                }
+
+                _ = config_interval.tick() => {
+                    if let Ok(modified) = std::fs::metadata(&self.config_path).and_then(|m| m.modified())
+                        && modified > last_config_mod
+                    {
+                        last_config_mod = modified;
+                        match crate::config::parse_config(&self.config_path) {
+                            Ok(cfg) => {
+                                tracing::info!("Config file modified. Reloaded {} rules.", cfg.accept_rules.len());
+                                self.config_rules = cfg.accept_rules;
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to reload config: {}", e);
+                            }
+                        }
+                    }
+                }
+
                 _ = ping_interval.tick() => {
                     if let Err(e) = self.socket_client.emit_ping().await {
                         tracing::error!("Failed to ping: {}", e);
@@ -122,6 +169,7 @@ impl Controller {
                 }
             }
         }
+        Ok(())
     }
 
     async fn handle_socket_event(&mut self, event: BridgeEvent) -> Result<()> {
@@ -177,6 +225,12 @@ impl Controller {
 
     async fn handle_challenge(&mut self, evt: ChallengeReceivedEvent) -> Result<()> {
         tracing::info!("Received challenge {} from {}", evt.challenge_id, evt.challenger_username);
+
+        if self.shutting_down {
+            tracing::info!("Declining challenge {}, shutting down gracefully", evt.challenge_id);
+            self.http_client.decline_challenge(evt.challenge_id).await?;
+            return Ok(());
+        }
 
         if self.active_game.is_some() {
             tracing::info!("Declining challenge {}, already in a game", evt.challenge_id);
@@ -261,6 +315,12 @@ impl Controller {
 
     async fn handle_rematch_requested(&mut self, evt: RematchRequestedEvent) -> Result<()> {
         tracing::info!("Rematch requested for game {} by {}", evt.game_id, evt.requester_name);
+
+        if self.shutting_down {
+            tracing::info!("Declining rematch request for game {} (shutting down)", evt.game_id);
+            self.socket_client.respond_to_rematch(&evt.game_id, false).await?;
+            return Ok(());
+        }
 
         // We always accept if we have last game info and aren't in another game
         if self.last_game_info.is_some() && self.active_game.is_none() {
@@ -381,7 +441,7 @@ impl Controller {
                 }
             }
             EngineEvent::Info(info) => {
-                tracing::debug!("Engine info: {}", info);
+                tracing::info!("Engine info: {}", info);
             }
             EngineEvent::About(_) => {}
             EngineEvent::Warn(w) => tracing::warn!("Engine warning: {}", w),

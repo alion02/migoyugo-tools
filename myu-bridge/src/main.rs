@@ -46,8 +46,13 @@ async fn main() -> Result<()> {
 
     let socket_client = MigoyugoSocketClient::connect(&args.url, &token, event_tx).await?;
 
-    let mut controller =
-        Controller::new(Arc::new(http_client), Arc::new(socket_client), bridge_config.accept_rules, event_rx);
+    let mut controller = Controller::new(
+        Arc::new(http_client),
+        Arc::new(socket_client),
+        config_path.to_path_buf(),
+        bridge_config.accept_rules,
+        event_rx,
+    );
 
     tracing::info!("Myu-Bridge started and connected to {}", args.url);
 
