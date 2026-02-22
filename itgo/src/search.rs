@@ -101,7 +101,7 @@ pub fn search<N: Node>(
     }
     if playable == 0 {
         // Wego: no legal moves
-        let best_value = match f.score.cmp(&0) {
+        let best_value = match f[-1].opp_yugo.count_ones().cmp(&f.opp_yugo.count_ones()) {
             Ordering::Greater => MAX_VALUE - f.ply,
             Ordering::Equal => 0,
             Ordering::Less => f.ply - MAX_VALUE,
@@ -122,7 +122,7 @@ pub fn search<N: Node>(
             let mut value;
             if depth == 0 {
                 thread.evals += 1;
-                value = new.score * 20 + new.psqt_value;
+                value = new.psqt_value;
             } else {
                 let f = f + 1;
                 apply(f, new, depth >= 2);

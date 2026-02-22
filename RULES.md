@@ -10,7 +10,7 @@ Players alternate placing a piece of their color (**Migo**) on any empty square,
 When a placement completes **at least one** line of **exactly 4** pieces of the same color:
 1.  The placed Migo becomes a **Yugo** (a permanent piece).
 2.  All Migos in completed lines are removed from the board (but Yugos remain).
-3.  One is added to the player's score for each completed line.
+3.  One is added to the player's score.
 
 ### Winning
 *   **Igo (instant win):** Create a line of 4 Yugos.

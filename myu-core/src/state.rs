@@ -171,11 +171,11 @@ impl State {
             match color {
                 Color::White => {
                     new_state.white_migos &= !to_remove;
-                    new_state.white_score += yugos_formed as u8;
+                    new_state.white_score += 1;
                 }
                 Color::Black => {
                     new_state.black_migos &= !to_remove;
-                    new_state.black_score += yugos_formed as u8;
+                    new_state.black_score += 1;
                 }
             }
         }

@@ -1,4 +1,4 @@
-use std::{arch::x86_64::_mm256_movemask_pd, mem::transmute, simd::prelude::*};
+use std::{mem::transmute, simd::prelude::*};
 
 use multiptr::MultiMut;
 
@@ -70,13 +70,12 @@ const fn to_symmetrical<T: Copy>(v: [T; 10]) -> [T; 64] {
 
 pub static PSQT_MIGO: [i32; 64] = to_symmetrical([2, 3, 4, 6, 6, 7, 9, 12, 11, 5]);
 
-pub static PSQT_YUGO: [i32; 64] = to_symmetrical([50, 52, 54, 56, 59, 61, 61, 65, 65, 70]);
+pub static PSQT_YUGO: [i32; 64] = to_symmetrical([70, 72, 74, 76, 79, 81, 81, 85, 85, 90]);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MakeData {
     pub migo: u64,
     pub yugo: u64,
-    pub score: i32,
     pub psqt_value: i32,
     pub hash: u64,
 }
@@ -86,7 +85,6 @@ pub fn make_migo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     MakeData {
         migo: f[-1].opp_migo | 1 << mv,
         yugo: f[-1].opp_yugo,
-        score: f.score,
         psqt_value: f.psqt_value + PSQT_MIGO[mv as usize],
         hash: f.hash ^ f.side_hash.migo()[mv as usize],
     }
@@ -96,14 +94,12 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
     assume!((mv as usize) < 64);
     let mut migo = f[-1].opp_migo;
     let yugo = f[-1].opp_yugo | 1 << mv;
-    let mut score = f.score;
     let mut psqt_value = f.psqt_value + PSQT_YUGO[mv as usize];
     let mut hash = f.hash ^ f.side_hash.yugo()[mv as usize];
     let mut masks = Simd::splat(migo | yugo);
     masks &= masks >> DIRS[1];
     masks &= masks >> DIRS[2];
     masks &= SHR_MASK[3];
-    let has_line = masks;
     masks |= masks << DIRS[1];
     masks |= masks << DIRS[2];
     let lines = masks.reduce_or();
@@ -115,8 +111,7 @@ pub fn make_yugo(f: MultiMut<Frame>, mv: u8) -> MakeData {
         remove &= remove - 1;
     }
     migo &= !lines;
-    score += unsafe { _mm256_movemask_pd(transmute(has_line.simd_ne(Simd::default()))) }.count_ones() as i32;
-    MakeData { migo, yugo, score, psqt_value, hash }
+    MakeData { migo, yugo, psqt_value, hash }
 }
 
 pub fn apply(mut f: MultiMut<Frame>, make: MakeData, compute_aux: bool) {
@@ -135,7 +130,6 @@ pub fn apply(mut f: MultiMut<Frame>, make: MakeData, compute_aux: bool) {
     }
     f.opp_migo = make.migo;
     f.opp_yugo = make.yugo;
-    f.score = -make.score;
     f.psqt_value = -make.psqt_value;
     f.hash = make.hash ^ HASH_STM;
 }

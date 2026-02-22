@@ -36,7 +36,6 @@ impl Game {
                         opp_makes_yugo: 0,
                         opp_makes_igo: 0,
                         opp_too_long: 0,
-                        score: 0,
                         psqt_value: 0,
                         hash: 0,
 
@@ -106,7 +105,6 @@ impl Game {
             this.opp_makes_yugo = other.opp_makes_yugo;
             this.opp_makes_igo = other.opp_makes_igo;
             this.opp_too_long = other.opp_too_long;
-            this.score = other.score;
             this.psqt_value = other.psqt_value;
             this.hash = other.hash;
         }
@@ -120,7 +118,6 @@ pub struct Frame {
     pub opp_makes_yugo: u64,
     pub opp_makes_igo: u64,
     pub opp_too_long: u64,
-    pub score: i32,
     pub psqt_value: i32,
     pub hash: u64,
 
