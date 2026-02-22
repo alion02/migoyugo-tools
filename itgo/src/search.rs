@@ -115,9 +115,9 @@ pub fn search<N: Node>(
     let mut best_value = -i32::MAX;
     let mut best_mv = !0;
     depth -= 1;
-    macro_rules! try_mv {
-        ($mv:expr, $on_cut:expr) => {
-            let mv = $mv;
+    let mut try_mv = {
+        #[inline(always)]
+        |shared: &Shared, thread: &mut Thread, mut f: MultiMut<Frame>, mv: u8| {
             let new = if makes_yugo & 1 << mv != 0 { make_yugo(f, mv) } else { make_migo(f, mv) }; // helper loses perf
             let mut value;
             if depth == 0 {
@@ -153,10 +153,18 @@ pub fn search<N: Node>(
                         }
                     }
                     if value >= beta {
-                        $on_cut
+                        return true;
                     }
                     alpha = value;
                 }
+            }
+            false
+        }
+    };
+    macro_rules! try_mv {
+        ($mv:expr, $on_cut:expr) => {
+            if try_mv(shared, thread, f, $mv) {
+                $on_cut
             }
         };
     }
