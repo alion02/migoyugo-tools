@@ -12,7 +12,7 @@ const LOOKBEHIND: usize = 1;
 const LOOKAHEAD: usize = 0;
 pub const MAX_LEN: usize = 64 * (4 * 3 + 1); // upper bound assuming board fill with inefficient quad-yugos
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Game {
     pub stack: Box<[Frame]>,
     pub index: usize,
@@ -65,6 +65,7 @@ impl Game {
             for mv in mvs {
                 match checked_direct_make(self.frame_ptr(), mv.raw()) {
                     DirectMakeResult::Ok => (),
+                    // FIXME: these messages are incorrect for from_start, fix implementation
                     DirectMakeResult::Igo => break 'update "Move sequence extends past Igo, cancelling",
                     DirectMakeResult::Wego => break 'update "Move sequence extends past Wego, cancelling",
                     DirectMakeResult::Illegal => break 'update "Sequence contains illegal move(s), cancelling",
@@ -95,11 +96,12 @@ impl Game {
         }
     }
 
+    // TODO: delete, better to directly update instances held by threads
     pub fn sync_with(&mut self, game: &Game) {
         self.index = game.index;
         for i in self.index - LOOKBEHIND..self.index + LOOKAHEAD + 1 {
             let this = &mut self.stack[i];
-            let other = game.stack[i];
+            let other = &game.stack[i];
             this.opp_migo = other.opp_migo;
             this.opp_yugo = other.opp_yugo;
             this.opp_makes_yugo = other.opp_makes_yugo;
@@ -111,7 +113,7 @@ impl Game {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct Frame {
     pub opp_migo: u64,
     pub opp_yugo: u64,
