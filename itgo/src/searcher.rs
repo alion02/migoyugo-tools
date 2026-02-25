@@ -1,6 +1,6 @@
 use std::{
     array,
-    panic::{AssertUnwindSafe, catch_unwind, panic_any},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     simd::prelude::*,
     sync::mpsc::{SyncSender, sync_channel},
     thread::spawn,
@@ -68,7 +68,7 @@ pub fn start() -> SyncSender<Cmd> {
                                 if e.downcast_ref::<ExitSearch>().is_none() {
                                     send_error("Search panicked - this is an engine bug");
                                     send(&EngineMsg::Best(None));
-                                    panic_any(e);
+                                    resume_unwind(e);
                                 }
                                 break;
                             }
