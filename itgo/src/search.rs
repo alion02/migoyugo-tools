@@ -1,5 +1,9 @@
 use std::{
-    cmp::Ordering, marker::PhantomData, panic::resume_unwind, simd::prelude::*, sync::atomic::Ordering::Relaxed,
+    cmp::Ordering,
+    marker::PhantomData,
+    panic::resume_unwind,
+    simd::{Select, prelude::*},
+    sync::atomic::Ordering::Relaxed,
 };
 
 use multiptr::MultiMut;
@@ -209,7 +213,7 @@ pub fn search<N: Node>(
             let mut failed = 0u64;
             let scores = unsafe { *f.history };
             while mvs != 0 {
-                let scores = Mask::from_bitmask(mvs).select(scores, Simd::splat(i8::MIN));
+                let scores = mask8x64::from_bitmask(mvs).select(scores, Simd::splat(i8::MIN));
                 let mv = Simd::splat(scores.reduce_max()).simd_eq(scores).to_bitmask().trailing_zeros() as u8;
                 try_mv!(mv, {
                     let history = unsafe { &mut *f.history };
