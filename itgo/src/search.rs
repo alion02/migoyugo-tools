@@ -95,8 +95,10 @@ pub fn search<N: Node>(
     let makes_yugo = f[-1].opp_makes_yugo;
     let makes_igo = f[-1].opp_makes_igo & playable;
     if makes_igo != 0 {
-        f.pv[0] = makes_igo.trailing_zeros() as u8;
-        f.pv_len = 1;
+        if N::PV {
+            f.pv[0] = makes_igo.trailing_zeros() as u8;
+            f.pv_len = 1;
+        }
         return MAX_VALUE - (f.ply + 1); // terminal state is technically the *next* ply
     }
     if playable == 0 {
@@ -106,7 +108,9 @@ pub fn search<N: Node>(
             Ordering::Equal => 0,
             Ordering::Less => f.ply - MAX_VALUE,
         };
-        f.pv_len = 0;
+        if N::PV {
+            f.pv_len = 0;
+        }
         return best_value;
     }
     let tt_entry = N::PV.then(|| &shared.tt[f.hash]);
