@@ -15,8 +15,10 @@ pub struct AcceptRule {
     pub engine_set: Option<serde_json::Value>,
 }
 
-pub fn parse_config(path: &std::path::Path) -> Result<BridgeConfig> {
-    let content = std::fs::read_to_string(path).with_context(|| format!("Failed to read config file at {:?}", path))?;
+pub async fn parse_config(path: &std::path::Path) -> Result<BridgeConfig> {
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .with_context(|| format!("Failed to read config file at {:?}", path))?;
 
     let doc: KdlDocument = content.parse().context("Failed to parse KDL config")?;
     let mut accept_rules = Vec::new();

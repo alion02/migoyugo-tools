@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     let password = std::env::var("MIGOYUGO_PASSWORD").context("MIGOYUGO_PASSWORD environment variable is required")?;
 
     let config_path = std::path::Path::new(&args.config);
-    let bridge_config = config::parse_config(config_path)?;
+    let bridge_config = config::parse_config(config_path).await?;
     tracing::info!("Loaded {} config rules", bridge_config.accept_rules.len());
 
     let mut http_client = MigoyugoHttpClient::new(&args.url);
