@@ -100,7 +100,8 @@ impl Controller {
         let mut ping_interval = tokio::time::interval_at(Instant::now() + PING_INTERVAL, PING_INTERVAL);
 
         let mut config_interval = tokio::time::interval(Duration::from_secs(1));
-        let mut last_config_mod = std::fs::metadata(&self.config_path)
+        let mut last_config_mod = tokio::fs::metadata(&self.config_path)
+            .await
             .and_then(|m| m.modified())
             .unwrap_or_else(|_| std::time::SystemTime::now());
 
@@ -126,7 +127,7 @@ impl Controller {
                 }
 
                 _ = config_interval.tick() => {
-                    if let Ok(modified) = std::fs::metadata(&self.config_path).and_then(|m| m.modified())
+                    if let Ok(modified) = tokio::fs::metadata(&self.config_path).await.and_then(|m| m.modified())
                         && modified > last_config_mod
                     {
                         last_config_mod = modified;
